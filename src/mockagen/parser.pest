@@ -1,0 +1,162 @@
+
+body = { NEWLINE* ~ (include_statement ~ NEWLINE)? ~ NEWLINE* ~ statements ~ NEWLINE* }
+
+include_statement = { "INCLUDE" ~ STRING_LITERAL ~ ("," ~ STRING_LITERAL)* }
+
+statements = { definition ~ (NEWLINE+ ~ definition)* }
+
+definition =
+    { single_definition
+    | nested_definition
+    }
+
+
+single_definition =
+    { ( "DEF" ~ IDENTIFIER ~ "=" ~ value )
+    | ( "DEF" ~ IDENTIFIER ~ NEWLINE ~ TAB1 ~ "=" ~ "ONEOF" ~ (NEWLINE ~ TAB1 ~ "|" ~ weighted_value)+ )
+    }
+
+
+nested_definition = { using_ids? ~ "DEF" ~ assign_ids ~ ((NEWLINE ~ match_1)+ | (NEWLINE ~ assign_1)+) }
+
+
+using_ids = { "USING" ~ names }
+
+assign_ids = { names }
+
+names = { IDENTIFIER ~ ("," ~ IDENTIFIER)* }
+
+
+
+match_1 = { TAB1 ~ "?" ~ matcher_1 ~ { (NEWLINE ~ assign-2)+ | (NEWLINE ~ match_2)+ } }
+
+matcher_1 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB1 ~ "|" ~ value)+)
+    }
+
+assign_1 = { TAB1 ~ "=" ~ weight? ~ value_1 ~ (NEWLINE ~ assign_2)+ }
+
+value_1 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB1 ~ "|" ~ weighted_value)+)
+    }
+
+
+
+match_2 = { TAB2 ~ "?" ~ matcher_2 ~ (NEWLINE ~ assign_3)+ }
+
+matcher_2 =
+    { value
+    | ("ONEOF" ~ { NEWLINE ~ TAB2 ~ "|" ~ value }+)
+    }
+
+assign_2 = { TAB2 ~ "=" ~ weight? ~ value_2 ~ (NEWLINE ~ assign_3)* }
+
+value_2 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB2 ~ "|" ~ weighted_value)+)
+    }
+
+
+
+match_3 = { TAB3 ~ "?" ~ matcher_3 ~ (NEWLINE ~ assign_4)+ }
+
+matcher_3 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB3 ~ "|" ~ value)+)
+    }
+
+assign_3 = { TAB3 ~ "=" ~ weight? ~ value_3 ~ (NEWLINE ~ assign_4)* }
+
+value_3 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB3 ~ "|" ~ weighted_value)+)
+    }
+
+
+
+match_4 = { TAB4 ~ "?" ~ matcher_4 ~ (NEWLINE ~ assign_5)+ }
+
+matcher_4 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB4 ~ "|" ~ value)+)
+    }
+
+assign_4 = { TAB4 ~ "=" ~ weight? ~ value_4 ~ (NEWLINE ~ assign_5)* }
+
+value_4 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB4 ~ "|" ~ weighted_value)+)
+    }
+
+
+
+assign_5 = { TAB5 ~ "=" ~ weight? ~ value_5 }
+
+value_5 =
+    { value
+    | ("ONEOF" ~ (NEWLINE ~ TAB5 ~ "|" ~ weighted_value)+)
+    }
+
+
+
+weight = { WEIGHT }
+
+weighted_value = { WEIGHT? ~ value }
+
+value =
+    { timestamp_date_value
+    | identifier_value
+    | literal_value
+    | integer_value
+    | string_value
+    | real_value
+    | join_value
+    | any_value
+    }
+
+timestamp_date_value = { "timestamp/date" ~ DATE_LITERAL ~ DATE_LITERAL }
+
+identifier_value = { IDENTIFIER }
+
+literal_value = { STRING_LITERAL }
+
+integer_value = { "integer" ~ INTEGER_LITERAL ~ INTEGER_LITERAL? }
+
+string_value = { "string" ~ INTEGER_LITERAL ~ INTEGER_LITERAL }
+
+real_value = { "real" ~ REAL_LITERAL ~ REAL_LITERAL? }
+
+join_value = { "join" ~ (identifier_value | literal_value)+ }
+
+any_value = { "any" }
+
+
+WEIGHT = @{ (ASCII_NONZERO_DIGIT
+            | (ASCII_NONZERO_DIGIT | ASCII_DIGIT)
+            | (ASCII_DIGIT{0,2} ~ "." ~ (ASCII_NONZERO_DIGIT | (ASCII_DIGIT ~ ASCII_NONZERO_DIGIT) | (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT)))
+            )
+            ~ "%"
+          }
+
+STRING_LITERAL = @{ "\"" ~ !("\" | NEWLINE)* ~ "\" }
+
+DATE_LITERAL = @{ ASCII_DIGIT{4} ~ "-" ~ ASCII_DIGIT{2} ~ "-" ~ ASCII_DIGIT{2} }
+
+REAL_LITERAL = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+
+IDENTIFIER = @{ (ASCII_ALPHA | "-")+ }
+
+/* TODO this parser properly supports indentation, so I can use a more sophisticated system this time around */
+TAB5 = { TAB{5} }
+
+TAB4 = { TAB{4} }
+
+TAB3 = { TAB{3} }
+
+TAB2 = { TAB{2} }
+
+TAB1 = { TAB{1} }
+
+TAB = { " "{4} }
