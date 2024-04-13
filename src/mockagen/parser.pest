@@ -1,124 +1,80 @@
 
-body = { NEWLINE* ~ (include_statement ~ NEWLINE)? ~ NEWLINE* ~ statements ~ NEWLINE* }
+body = _{ SOI ~ NEWLINE* ~ (include_statement ~ NEWLINE+)? ~ statements ~ NEWLINE* ~ EOI }
 
 include_statement = { "INCLUDE" ~ STRING_LITERAL ~ ("," ~ STRING_LITERAL)* }
 
-statements = { definition ~ (NEWLINE+ ~ definition)* }
+statements = _{ definition ~ (NEWLINE+ ~ definition)* }
 
 definition =
-    { single_definition
+   _{ single_definition
     | nested_definition
     }
 
 
 single_definition =
     { ( "DEF" ~ IDENTIFIER ~ "=" ~ value )
-    | ( "DEF" ~ IDENTIFIER ~ NEWLINE ~ TAB1 ~ "=" ~ "ONEOF" ~ (NEWLINE ~ TAB1 ~ "|" ~ weighted_value)+ )
+    | ( "DEF" ~ IDENTIFIER ~ NEWLINE ~ PUSH(TAB) ~ "=" ~ value_set ~ DROP )
     }
 
 
-nested_definition = { using_ids? ~ "DEF" ~ assign_ids ~ ((NEWLINE ~ match_1)+ | (NEWLINE ~ assign_1)+) }
+nested_definition = { using_ids? ~ "DEF" ~ assign_ids ~ nested_clauses }
 
 
 using_ids = { "USING" ~ names }
 
 assign_ids = { names }
 
-names = { IDENTIFIER ~ ("," ~ IDENTIFIER)* }
+names = _{ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 
 
+nested_clauses = { ((NEWLINE ~ match)+ | (NEWLINE ~ assign)+ ) }
 
-match_1 = { TAB1 ~ "?" ~ matcher_1 ~ { (NEWLINE ~ assign-2)+ | (NEWLINE ~ match_2)+ } }
+match = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ matchers ~ (match_sub_assignments | match_sub_matches) ~ DROP }
 
-matcher_1 =
+match_sub_assignments = { (NEWLINE ~ assign)+ }
+
+match_sub_matches = { (NEWLINE ~ match)+ }
+
+matchers =
     { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB1 ~ "|" ~ value)+)
+    | matcher_set
     }
 
-assign_1 = { TAB1 ~ "=" ~ weight? ~ value_1 ~ (NEWLINE ~ assign_2)+ }
+matcher_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ value)+ }
 
-value_1 =
+
+assign = { PEEK_ALL ~ PUSH(TAB+) ~ "=" ~ weighted_values ~ sub_assignments ~ DROP }
+
+sub_assignments = { (NEWLINE ~ assign)* }
+
+weighted_values = { WEIGHT? ~ values }
+
+values =
     { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB1 ~ "|" ~ weighted_value)+)
+    | value_set
     }
 
+value_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ weighted_value)+ }
 
-
-match_2 = { TAB2 ~ "?" ~ matcher_2 ~ (NEWLINE ~ assign_3)+ }
-
-matcher_2 =
-    { value
-    | ("ONEOF" ~ { NEWLINE ~ TAB2 ~ "|" ~ value }+)
-    }
-
-assign_2 = { TAB2 ~ "=" ~ weight? ~ value_2 ~ (NEWLINE ~ assign_3)* }
-
-value_2 =
-    { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB2 ~ "|" ~ weighted_value)+)
-    }
-
-
-
-match_3 = { TAB3 ~ "?" ~ matcher_3 ~ (NEWLINE ~ assign_4)+ }
-
-matcher_3 =
-    { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB3 ~ "|" ~ value)+)
-    }
-
-assign_3 = { TAB3 ~ "=" ~ weight? ~ value_3 ~ (NEWLINE ~ assign_4)* }
-
-value_3 =
-    { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB3 ~ "|" ~ weighted_value)+)
-    }
-
-
-
-match_4 = { TAB4 ~ "?" ~ matcher_4 ~ (NEWLINE ~ assign_5)+ }
-
-matcher_4 =
-    { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB4 ~ "|" ~ value)+)
-    }
-
-assign_4 = { TAB4 ~ "=" ~ weight? ~ value_4 ~ (NEWLINE ~ assign_5)* }
-
-value_4 =
-    { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB4 ~ "|" ~ weighted_value)+)
-    }
-
-
-
-assign_5 = { TAB5 ~ "=" ~ weight? ~ value_5 }
-
-value_5 =
-    { value
-    | ("ONEOF" ~ (NEWLINE ~ TAB5 ~ "|" ~ weighted_value)+)
-    }
-
-
-
-weight = { WEIGHT }
 
 weighted_value = { WEIGHT? ~ value }
 
+
+
+
+
 value =
     { timestamp_date_value
-    | identifier_value
     | literal_value
     | integer_value
     | string_value
     | real_value
     | join_value
     | any_value
+    | identifier_value
     }
 
 timestamp_date_value = { "timestamp/date" ~ DATE_LITERAL ~ DATE_LITERAL }
-
-identifier_value = { IDENTIFIER }
 
 literal_value = { STRING_LITERAL }
 
@@ -132,31 +88,65 @@ join_value = { "join" ~ (identifier_value | literal_value)+ }
 
 any_value = { "any" }
 
+identifier_value = { IDENTIFIER }
 
-WEIGHT = @{ (ASCII_NONZERO_DIGIT
-            | (ASCII_NONZERO_DIGIT | ASCII_DIGIT)
-            | (ASCII_DIGIT{0,2} ~ "." ~ (ASCII_NONZERO_DIGIT | (ASCII_DIGIT ~ ASCII_NONZERO_DIGIT) | (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT)))
-            )
-            ~ "%"
-          }
 
-STRING_LITERAL = @{ "\"" ~ !("\" | NEWLINE)* ~ "\" }
+PERCENTAGE_NUMBER = { ASCII_NONZERO_DIGIT ~ ASCII_DIGIT? }
+
+DECIMAL_SUFFIX =
+    { ASCII_NONZERO_DIGIT
+    | (ASCII_DIGIT ~ ASCII_NONZERO_DIGIT)
+    | (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT)
+    }
+
+DECIMAL_PERCENTAGE_NUMBER =
+    { PERCENTAGE_NUMBER?
+    ~ "."
+    ~ DECIMAL_SUFFIX
+    }
+
+WEIGHTING =
+   _{ (PERCENTAGE_NUMBER ~ !".")
+    | DECIMAL_PERCENTAGE_NUMBER
+    | "100" // I should remove this as a language feature. You should just omit the weight.
+    }
+
+WEIGHT = ${ WEIGHTING ~ "%" }
 
 DATE_LITERAL = @{ ASCII_DIGIT{4} ~ "-" ~ ASCII_DIGIT{2} ~ "-" ~ ASCII_DIGIT{2} }
 
-REAL_LITERAL = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+REAL_LITERAL = @{ INTEGER_LITERAL ~ "." ~ ASCII_DIGIT+ }
 
-IDENTIFIER = @{ (ASCII_ALPHA | "-")+ }
+INTEGER_LITERAL = @{ "-"? ~ ASCII_DIGIT+ }
 
-/* TODO this parser properly supports indentation, so I can use a more sophisticated system this time around */
-TAB5 = { TAB{5} }
+SYNTAX_KEYWORDS =
+    { "INCLUDE"
+    | "ONEOF"
+    | "USING"
+    | "DEF"
+    }
 
-TAB4 = { TAB{4} }
+TYPE_KEYWORDS =
+    { "timestamp/date"
+    | "integer"
+    | "real"
+    | "string"
+    | "join"
+    | "any"
+    }
 
-TAB3 = { TAB{3} }
+RESERVED_WORDS = { SYNTAX_KEYWORDS | TYPE_KEYWORDS }
 
-TAB2 = { TAB{2} }
+IDENTIFIER = @{ &!RESERVED_WORDS ~ (ASCII_ALPHA | "-")+ }
 
-TAB1 = { TAB{1} }
+STRING_LITERAL = ${ "\"" ~ string_content ~ "\"" }
+string_content = @{ string_char* }
+string_char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
 
-TAB = { " "{4} }
+TAB = @{ " "{4} }
+
+WHITESPACE = _{ &!TAB ~ " " }

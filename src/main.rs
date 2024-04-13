@@ -1,5 +1,12 @@
+use mockagen::run_mockagen;
+
 mod mockagen;
+mod mockadoc;
+
 
 fn main() {
-    println!("Hello, world!");
+    let file = std::fs::read_to_string("src/generic-event-types.mkg").unwrap();
+    let output = run_mockagen(&file);
+
+    output.map_err(|err| dbg!(err));
 }
