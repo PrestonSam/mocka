@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use pest::{iterators::{Pair, Pairs}, Span};
 
-use super::{evaluator::model::EvaluationError, parser::Rule};
+use super::{evaluator::model::EvaluationError, parser::Rule, utils::unpackers::into_array};
 
 
 #[derive(Debug)]
@@ -78,82 +78,12 @@ impl <'a>core::fmt::Debug for Providence<'a> {
     }
 }
 
-pub struct AnnotatedPair<'a> {
-    pub providence: Providence<'a>,
-    pub pair: Pair<'a, Rule>,
-}
-
-impl <'a>From<Pair<'a, Rule>> for AnnotatedPair<'a> {
-    fn from(pair: Pair<'a, Rule>) -> Self {
-        AnnotatedPair {
-            providence: Providence {
-                span: pair.as_span(),
-                src: pair.as_str()
-            },
-            pair,
-        }
-    }
-}
-
-pub struct AnnotatedPairs<'a> {
-    pub providence: Providence<'a>,
-    pub pairs: Pairs<'a, Rule>,
-}
-
-impl <'a>From<Pair<'a, Rule>> for AnnotatedPairs<'a> {
-    fn from(value: Pair<'a, Rule>) -> Self {
-        AnnotatedPairs {
-            providence: Providence {
-                span: value.as_span(),
-                src: value.as_str()
-            },
-            pairs: value.into_inner(),
-        }
-    }
-}
-
-impl <'a>core::fmt::Debug for AnnotatedPairs<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let rules = self.pairs
-            .clone()
-            .map(|pair| pair.as_rule())
-            .collect::<Vec<_>>();
-
-        write!(f, "Pairs {{ {:?}, child rules: {:?} }}", self.providence, rules)
-    }
-}
-
-#[derive(Debug)]
-pub struct RuleData<'a> {
-    pub rule: Rule,
-    pub inner: AnnotatedPairs<'a>,
-}
-
-impl <'a>From<Pair<'a, Rule>> for RuleData<'a> {
-    fn from(value: Pair<'a, Rule>) -> Self {
-        RuleData {
-            rule: value.as_rule(),
-            inner: AnnotatedPairs::from(value),
-        }
-    }
-}
-
-impl <'a>From<AnnotatedPair<'a>> for RuleData<'a> {
-    fn from(value: AnnotatedPair<'a>) -> Self {
-        RuleData {
-            rule: value.pair.as_rule(),
-            inner: AnnotatedPairs::from(value.pair),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum PackingError<'a> { // At some point I'll have to break this out into sub-errors
-    ASTPackerNoMatchFound(Vec<Option<RuleData<'a>>>),
-    ASTPackerEmptyInner,
+    SyntaxUnhandledTreeShape(SyntaxTree<'a>),
+    SyntaxChildrenArrayCastError(Vec<Option<(Rule, Providence<'a>, SyntaxChildren<'a>)>>),
+    SyntaxNodeCountMismatch(Vec<Option<(Rule, Providence<'a>, SyntaxChildren<'a>)>>),
     PairsCountMismatch(Vec<Pair<'a, Rule>>),
-    ArrayCastError(Vec<Option<Pair<'a, Rule>>>),
-    NoRuleFound(Rule),
     ParseIntError(core::num::ParseIntError),
     ParseRealError(core::num::ParseFloatError),
     DateParseError(chrono::ParseError),
@@ -178,21 +108,21 @@ impl From<chrono::ParseError> for PackingError<'_> {
 }
 
 #[derive(Debug)]
-pub struct AnnotatedParsingError<'a> {
+pub struct AnnotatedPackingError<'a> {
     pub error: PackingError<'a>,
     pub providence: Providence<'a>,
 }
 
 #[derive(Debug)]
 pub enum Error<'a> { // TODO see about removing the lifetime specifier as it's more trouble than it's worth
-    SequencingError(AnnotatedParsingError<'a>),
+    PackingError(AnnotatedPackingError<'a>),
     ParsingError(pest::error::Error<Rule>),
     EvaluationError(EvaluationError),
 }
 
-impl <'a>From<AnnotatedParsingError<'a>> for Error<'a> {
-    fn from(value: AnnotatedParsingError<'a>) -> Self {
-        Error::SequencingError(value)
+impl <'a>From<AnnotatedPackingError<'a>> for Error<'a> {
+    fn from(value: AnnotatedPackingError<'a>) -> Self {
+        Error::PackingError(value)
     }
 }
 
@@ -213,12 +143,54 @@ impl From<EvaluationError> for Error<'_> {
 
 // Trying to figure out how to simplify the process of representing the AST
 
-struct Token<'a> {
-    token: Rule,
-    providence: Providence<'a>,
+#[derive(Debug, Clone)]
+pub struct SyntaxToken<'a> {
+    pub rule: Rule,
+    pub providence: Providence<'a>,
 }
 
-enum TokenTree<'a> {
-    Node(Token<'a>, Vec<TokenTree<'a>>),
-    Leaf(Token<'a>),
+#[derive(Debug, Clone)]
+pub struct SyntaxTree<'a> {
+    pub token: SyntaxToken<'a>,
+    pub children: SyntaxChildren<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SyntaxChildren<'a> {
+    Node(Vec<SyntaxTree<'a>>),
+    Wrapper(Box<SyntaxTree<'a>>), // I've just realised that this could be mistakenly triggered if a Node just so happens to have a single child
+    Leaf,
+}
+
+impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
+    fn from(pair: Pair<'a, Rule>) -> Self {
+        let rule = pair.as_rule();
+        let providence = Providence { src: pair.as_str(), span: pair.as_span() };
+        let token = SyntaxToken { rule, providence };
+
+        let inner = pair.into_inner();
+
+        let children = match inner.len() {
+            0 => SyntaxChildren::Leaf,
+            1 => {
+                let [ child ] = into_array(inner)
+                    .expect("Perhaps there's a better way to do this");
+
+                SyntaxChildren::Wrapper(SyntaxTree::from(child).into())
+            },
+            _ => {
+                let children = inner.map(SyntaxTree::from).collect();
+
+                SyntaxChildren::Node(children)
+            }
+        };
+
+        SyntaxTree { token, children }
+    }
+}
+
+impl <'a>From<(Rule, Providence<'a>, SyntaxChildren<'a>)> for SyntaxTree<'a> {
+    fn from((rule, providence, children): (Rule, Providence<'a>, SyntaxChildren<'a>)) -> Self {
+        SyntaxTree { token: SyntaxToken { rule, providence }, children }
+    }
 }
