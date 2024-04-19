@@ -1,16 +1,7 @@
-use pest::iterators::Pair;
-
 use crate::mockagen::{model::{AnnotatedPackingError, Error, PackingError, Providence, SyntaxChildren, SyntaxTree}, parser::Rule};
 
 pub fn make_error_from_providence<'a>(providence: Providence<'a>, error: PackingError<'a>) -> Error<'a> {
     Error::from(AnnotatedPackingError { error, providence })
-}
-
-pub fn make_error_from_pair<'a>(pair: &Pair<'a, Rule>, error: PackingError<'a>) -> Error<'a> {
-    Error::from(AnnotatedPackingError {
-        error,
-        providence: Providence { span: pair.as_span(), src: pair.as_str() },
-    })
 }
 
 pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, Error> {

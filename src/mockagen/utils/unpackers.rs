@@ -1,10 +1,8 @@
 use std::str::FromStr;
 
-use pest::iterators::{Pair, Pairs};
-
 use crate::mockagen::{model::{Error, PackingError, Providence, SyntaxChildren, SyntaxTree, Value}, parser::Rule};
 
-use super::error::{make_error_from_pair, make_error_from_providence, make_no_array_match_found_error};
+use super::error::{make_error_from_providence, make_no_array_match_found_error};
 
 
 pub fn unpack_range<'a, T>(rule: Rule, make_values: fn(T, T) -> Value, trees: Vec<SyntaxTree<'a>>) -> Result<Value, Error>
@@ -26,17 +24,6 @@ where T: FromStr, PackingError<'a>: From<T::Err>
         nodes =>
             make_no_array_match_found_error(nodes),
     }
-}
-
-pub fn into_array<const N: usize>(pairs: Pairs<'_, Rule>) -> Result<[Pair<'_, Rule>; N], Error> {
-    pairs.take(N)
-        .collect::<Vec<Pair<'_, Rule>>>()
-        .try_into()
-        .map_err(|rules: Vec<Pair<'_, Rule>>| {
-            let pair = rules.first().unwrap().clone();
-
-            make_error_from_pair(&pair, PackingError::PairsCountMismatch(rules))
-        })
 }
 
 pub fn vec_into_array_varied_length<const N: usize>(vec: Vec<SyntaxTree>) -> Result<[Option<(Rule, Providence, Option<SyntaxChildren>)>; N], Error> {

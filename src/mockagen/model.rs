@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use pest::{iterators::Pair, Span};
 
-use super::{evaluator::model::EvaluationError, parser::Rule, utils::unpackers::into_array};
+use super::{evaluator::model::EvaluationError, parser::Rule};
 
 
 #[derive(Debug)]
@@ -83,7 +83,6 @@ pub enum PackingError<'a> { // At some point I'll have to break this out into su
     SyntaxUnhandledTreeShape(SyntaxTree<'a>),
     SyntaxChildrenArrayCastError(Vec<Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>>), // TODO This could probably use a type alias
     SyntaxNodeCountMismatch(Vec<Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>>), // TODO This could probably use a type alias
-    PairsCountMismatch(Vec<Pair<'a, Rule>>),
     ParseIntError(core::num::ParseIntError),
     ParseRealError(core::num::ParseFloatError),
     DateParseError(chrono::ParseError),
@@ -180,12 +179,12 @@ impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
         let providence = Providence { src: pair.as_str(), span: pair.as_span() };
         let token = SyntaxToken { rule, providence };
 
-        let inner = pair.into_inner();
+        let mut inner = pair.into_inner();
 
         let children = match inner.len() {
             0 => None,
             1 => {
-                let [ child ] = into_array(inner)
+                let child = inner.next()
                     .expect("Perhaps there's a better way to do this");
 
                 Some(SyntaxChildren::One(SyntaxTree::from(child).into()))
