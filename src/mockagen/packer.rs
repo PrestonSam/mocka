@@ -13,7 +13,7 @@ use super::{
 
 fn unpack_string_literal(tree: SyntaxTree) -> Result<String, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::STRING_LITERAL, SyntaxChildren::Wrapper(string_content)) =>
+        (Rule::STRING_LITERAL, Some(SyntaxChildren::One(string_content))) =>
             Ok(string_content.token.providence.src.to_string()),
 
         (rule, children) =>
@@ -23,29 +23,29 @@ fn unpack_string_literal(tree: SyntaxTree) -> Result<String, Error> {
 
 fn parse_value_type(tree: SyntaxTree) -> Result<Value, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::integer_value, SyntaxChildren::Node(children)) =>
-            unpack_range(Rule::INTEGER_LITERAL, Value::IntegerRange, children),
+        (Rule::integer_value, Some(children)) =>
+            unpack_range(Rule::INTEGER_LITERAL, Value::IntegerRange, children.get_values()),
 
-        (Rule::real_value, SyntaxChildren::Node(children)) =>
-            unpack_range(Rule::REAL_LITERAL, Value::RealRange, children),
+        (Rule::real_value, Some(children)) =>
+            unpack_range(Rule::REAL_LITERAL, Value::RealRange, children.get_values()),
 
-        (Rule::string_value, SyntaxChildren::Node(children)) =>
-            unpack_range(Rule::INTEGER_LITERAL, Value::StringRange, children),
+        (Rule::string_value, Some(children)) =>
+            unpack_range(Rule::INTEGER_LITERAL, Value::StringRange, children.get_values()),
 
-        (Rule::timestamp_date_value, SyntaxChildren::Node(children)) =>
-            unpack_range(Rule::DATE_LITERAL, Value::DateRange, children),
+        (Rule::timestamp_date_value, Some(children)) =>
+            unpack_range(Rule::DATE_LITERAL, Value::DateRange, children.get_values()),
 
-        (Rule::any_value, SyntaxChildren::Leaf) =>
+        (Rule::any_value, None) =>
             Ok(Value::Any),
 
-        (Rule::literal_value, SyntaxChildren::Wrapper(string_literal)) =>
+        (Rule::literal_value, Some(SyntaxChildren::One(string_literal))) =>
             Ok(Value::Literal(unpack_string_literal(*string_literal)?)),
 
-        (Rule::identifier_value, SyntaxChildren::Wrapper(identifier)) =>
+        (Rule::identifier_value, Some(SyntaxChildren::One(identifier))) =>
             Ok(Value::Identifier(identifier.token.providence.src.to_string())),
 
-        (Rule::join_value, SyntaxChildren::Node(children)) =>
-            Ok(Value::Join(children.into_iter()
+        (Rule::join_value, Some(children)) =>
+            Ok(Value::Join(children.get_values_iter()
                 .map(parse_value_type)
                 .collect::<Result<Vec<_>, Error>>()?)
             ),
@@ -57,11 +57,11 @@ fn parse_value_type(tree: SyntaxTree) -> Result<Value, Error> {
 
 fn parse_matchers(tree: SyntaxTree) -> Result<Vec<Value>, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::value, SyntaxChildren::Wrapper(child)) =>
+        (Rule::value, Some(SyntaxChildren::One(child))) =>
             Ok(vec![ parse_value_type(*child)? ]),
 
-        (Rule::matcher_set, SyntaxChildren::Node(children)) =>
-            children.into_iter()
+        (Rule::matcher_set, Some(children)) =>
+            children.get_values_iter()
                 .map(parse_value_type)
                 .collect(),
 
@@ -80,7 +80,7 @@ fn parse_weighting(tree: SyntaxTree) -> Result<f64, Error> {
 
 fn parse_maybe_weighted(tree: Vec<SyntaxTree>) -> Result<(Option<Weight>, SyntaxTree), Error> {
     match vec_into_array_varied_length(tree)? {
-        [ Some((Rule::WEIGHT, _, SyntaxChildren::Wrapper(weighting)))
+        [ Some((Rule::WEIGHT, _, Some(SyntaxChildren::One(weighting))))
         , Some(value)
         ] =>
             Ok((Some(parse_weighting(*weighting)?), SyntaxTree::from(value))),
@@ -97,11 +97,11 @@ fn parse_maybe_weighted(tree: Vec<SyntaxTree>) -> Result<(Option<Weight>, Syntax
 
 fn parse_weighted_value(tree: SyntaxTree) -> Result<WeightedValue, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::weighted_value, SyntaxChildren::Node(children)) => {
-            let (maybe_weight, value_tree) = parse_maybe_weighted(children)?;
+        (Rule::weighted_value, Some(children)) => {
+            let (maybe_weight, value_tree) = parse_maybe_weighted(children.get_values())?;
 
             match (value_tree.token.rule, value_tree.children) {
-                (Rule::value, SyntaxChildren::Wrapper(value)) =>
+                (Rule::value, Some(SyntaxChildren::One(value))) =>
                     Ok(WeightedValue {
                         weight: maybe_weight,
                         value: parse_value_type(*value)?
@@ -119,11 +119,11 @@ fn parse_weighted_value(tree: SyntaxTree) -> Result<WeightedValue, Error> {
 
 fn parse_weighted_value_or_set<'a>(tree: SyntaxTree<'a>) -> Result<Vec<WeightedValue>, Error<'a>> {
     match (tree.token.rule, tree.children) {
-        (Rule::value, SyntaxChildren::Wrapper(value_tree)) =>
+        (Rule::value, Some(SyntaxChildren::One(value_tree))) =>
             Ok(vec![ WeightedValue { weight: None, value: parse_value_type(*value_tree)? } ]),
 
-        (Rule::value_set, SyntaxChildren::Node(children)) =>
-            children.into_iter()
+        (Rule::value_set, Some(children)) =>
+            children.get_values_iter()
                 .map(parse_weighted_value)
                 .collect(),
 
@@ -134,7 +134,7 @@ fn parse_weighted_value_or_set<'a>(tree: SyntaxTree<'a>) -> Result<Vec<WeightedV
 
 fn parse_values(tree: SyntaxTree) -> Result<Vec<WeightedValue>, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::values, SyntaxChildren::Wrapper(wval_or_set)) =>
+        (Rule::values, Some(SyntaxChildren::One(wval_or_set))) =>
             parse_weighted_value_or_set(*wval_or_set),
 
         (rule, children) =>
@@ -144,7 +144,7 @@ fn parse_values(tree: SyntaxTree) -> Result<Vec<WeightedValue>, Error> {
 
 fn parse_single_definition(nodes: Vec<SyntaxTree>) -> Result<Definition, Error> {
     match vec_into_array_varied_length(nodes)? {
-        [ Some((Rule::IDENTIFIER, Providence { src: id, .. }, SyntaxChildren::Leaf))
+        [ Some((Rule::IDENTIFIER, Providence { src: id, .. }, None))
         , Some(weighted_values)
         ] =>
             Ok(Definition::SingleDefinition {
@@ -183,31 +183,31 @@ fn parse_children(trees: Vec<SyntaxTree>) -> Result<Option<Vec<DefNode>>, Error>
 
 fn parse_nest_def_branch(tree: SyntaxTree) -> Result<DefNode, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::r#match, SyntaxChildren::Node(children)) =>
-            match vec_into_array_varied_length(children)? {
-                [ Some((Rule::matchers, _, SyntaxChildren::Wrapper(matchers)))
-                , Some((Rule::match_sub_assignments | Rule::match_sub_matches, _, SyntaxChildren::Node(children) ))
+        (Rule::r#match, Some(children)) =>
+            match vec_into_array_varied_length(children.get_values())? {
+                [ Some((Rule::matchers, _, Some(SyntaxChildren::One(matchers))))
+                , Some((Rule::match_sub_assignments | Rule::match_sub_matches, _, Some(children) ))
                 ] =>
                     Ok(DefNode::Match {
                         matchers: parse_matchers(*matchers)?,
-                        children: parse_children(children)?
+                        children: parse_children(children.get_values())?
                     }),
 
                 nodes =>
                     make_no_array_match_found_error(nodes),
             }
 
-        (Rule::assign, SyntaxChildren::Node(children)) =>
-            match vec_into_array_varied_length(children)? {
-                [ Some((Rule::weighted_values, _, SyntaxChildren::Node(weighted_value_pairs)))
-                , Some((Rule::sub_assignments, _, SyntaxChildren::Node(sub_assignments_pairs)))
+        (Rule::assign, Some(children)) =>
+            match vec_into_array_varied_length(children.get_values())? {
+                [ Some((Rule::weighted_values, _, Some(weighted_value_pairs)))
+                , Some((Rule::sub_assignments, _, Some(sub_assignments_pairs)))
                 ] => {
-                    let (maybe_weight, values_tree) = parse_maybe_weighted(weighted_value_pairs)?;
+                    let (maybe_weight, values_tree) = parse_maybe_weighted(weighted_value_pairs.get_values())?;
 
                     Ok(DefNode::Assign {
                         weight: maybe_weight,
                         values: parse_values(values_tree)?,
-                        children: parse_children(sub_assignments_pairs)?
+                        children: parse_children(sub_assignments_pairs.get_values())?
                     })
                 }
 
@@ -222,14 +222,14 @@ fn parse_nest_def_branch(tree: SyntaxTree) -> Result<DefNode, Error> {
 
 fn parse_nested_definition(tree: Vec<SyntaxTree>) -> Result<Definition, Error> {
     let (maybe_using_ids, assign_ids, nested_clauses) = match vec_into_array_varied_length(tree)? {
-        [ Some((Rule::using_ids, _, SyntaxChildren::Node(using_ids)))
-        , Some((Rule::assign_ids, _, SyntaxChildren::Node(assign_ids)))
-        , Some((Rule::nested_clauses, _, SyntaxChildren::Node(nested_clauses)))
+        [ Some((Rule::using_ids, _, Some(using_ids)))
+        , Some((Rule::assign_ids, _, Some(assign_ids)))
+        , Some((Rule::nested_clauses, _, Some(nested_clauses)))
         ] =>
-            (Some(parse_names(using_ids)?), assign_ids, nested_clauses),
+            (Some(parse_names(using_ids.get_values())?), assign_ids, nested_clauses),
 
-        [ Some((Rule::assign_ids, _, SyntaxChildren::Node(assign_ids)))
-        , Some((Rule::nested_clauses, _, SyntaxChildren::Node(nested_clauses)))
+        [ Some((Rule::assign_ids, _, Some(assign_ids)))
+        , Some((Rule::nested_clauses, _, Some(nested_clauses)))
         , None
         ] =>
             (None, assign_ids, nested_clauses),
@@ -239,8 +239,8 @@ fn parse_nested_definition(tree: Vec<SyntaxTree>) -> Result<Definition, Error> {
     };
 
 
-    let assign_ids = parse_names(assign_ids)?;
-    let branches = nested_clauses.into_iter()
+    let assign_ids = parse_names(assign_ids.get_values())?;
+    let branches = nested_clauses.get_values_iter()
         .map(parse_nest_def_branch)
         .collect::<Result<Vec<_>, Error>>()?;
 
@@ -254,20 +254,20 @@ fn parse_nested_definition(tree: Vec<SyntaxTree>) -> Result<Definition, Error> {
 pub fn pack_mockagen(pairs: Pairs<'_, Rule>) -> Result<Vec<Statement>, Error> {
     pairs.map(SyntaxTree::from).map_while(|tree| {
         match (tree.token.rule, tree.children) {
-            (Rule::include_statement, SyntaxChildren::Node(children)) =>
-                Some(children.into_iter()
+            (Rule::include_statement, Some(children)) =>
+                Some(children.get_values_iter()
                     .map(unpack_string_literal)
                     .collect::<Result<_, _>>()
                     .map(Statement::Include)
                 ),
             
-            (Rule::single_definition, SyntaxChildren::Node(children)) =>
-                Some(parse_single_definition(children).map(Statement::Definition)),
+            (Rule::single_definition, Some(children)) =>
+                Some(parse_single_definition(children.get_values()).map(Statement::Definition)),
 
-            (Rule::nested_clauses, SyntaxChildren::Node(children)) =>
-                Some(parse_nested_definition(children).map(Statement::Definition)),
+            (Rule::nested_clauses, Some(children)) =>
+                Some(parse_nested_definition(children.get_values()).map(Statement::Definition)),
             
-            (Rule::EOI, SyntaxChildren::Leaf) =>
+            (Rule::EOI, None) =>
                 None,
 
             (rule, children) =>

@@ -20,7 +20,7 @@ pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, Error> {
     )
 }
 
-pub fn make_no_array_match_found_error<'a, T, const N: usize>(nodes: [Option<(Rule, Providence<'a>, SyntaxChildren<'a>)>; N]) -> Result<T, Error<'a>> {
+pub fn make_no_array_match_found_error<'a, T, const N: usize>(nodes: [Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>; N]) -> Result<T, Error<'a>> {
     // TODO forbidden code
     let providence = nodes.first().unwrap().as_ref().unwrap().1.clone();
 

@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use pest::{iterators::{Pair, Pairs}, Span};
+use pest::{iterators::Pair, Span};
 
 use super::{evaluator::model::EvaluationError, parser::Rule, utils::unpackers::into_array};
 
@@ -81,8 +81,8 @@ impl <'a>core::fmt::Debug for Providence<'a> {
 #[derive(Debug)]
 pub enum PackingError<'a> { // At some point I'll have to break this out into sub-errors
     SyntaxUnhandledTreeShape(SyntaxTree<'a>),
-    SyntaxChildrenArrayCastError(Vec<Option<(Rule, Providence<'a>, SyntaxChildren<'a>)>>),
-    SyntaxNodeCountMismatch(Vec<Option<(Rule, Providence<'a>, SyntaxChildren<'a>)>>),
+    SyntaxChildrenArrayCastError(Vec<Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>>), // TODO This could probably use a type alias
+    SyntaxNodeCountMismatch(Vec<Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>>), // TODO This could probably use a type alias
     PairsCountMismatch(Vec<Pair<'a, Rule>>),
     ParseIntError(core::num::ParseIntError),
     ParseRealError(core::num::ParseFloatError),
@@ -152,14 +152,26 @@ pub struct SyntaxToken<'a> {
 #[derive(Debug, Clone)]
 pub struct SyntaxTree<'a> {
     pub token: SyntaxToken<'a>,
-    pub children: SyntaxChildren<'a>,
+    pub children: Option<SyntaxChildren<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum SyntaxChildren<'a> {
-    Node(Vec<SyntaxTree<'a>>),
-    Wrapper(Box<SyntaxTree<'a>>), // I've just realised that this could be mistakenly triggered if a Node just so happens to have a single child
-    Leaf,
+    One(Box<SyntaxTree<'a>>),
+    Many(Vec<SyntaxTree<'a>>),
+}
+
+impl <'a>SyntaxChildren<'a> {
+    pub fn get_values(self) -> Vec<SyntaxTree<'a>> {
+        match self {
+            SyntaxChildren::One(child) => vec![*child],
+            SyntaxChildren::Many(children) => children,
+        }
+    }
+
+    pub fn get_values_iter(self) -> impl Iterator<Item = SyntaxTree<'a>> {
+        self.get_values().into_iter()
+    }
 }
 
 impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
@@ -171,17 +183,17 @@ impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
         let inner = pair.into_inner();
 
         let children = match inner.len() {
-            0 => SyntaxChildren::Leaf,
+            0 => None,
             1 => {
                 let [ child ] = into_array(inner)
                     .expect("Perhaps there's a better way to do this");
 
-                SyntaxChildren::Wrapper(SyntaxTree::from(child).into())
+                Some(SyntaxChildren::One(SyntaxTree::from(child).into()))
             },
             _ => {
                 let children = inner.map(SyntaxTree::from).collect();
 
-                SyntaxChildren::Node(children)
+                Some(SyntaxChildren::Many(children))
             }
         };
 
@@ -189,8 +201,8 @@ impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
     }
 }
 
-impl <'a>From<(Rule, Providence<'a>, SyntaxChildren<'a>)> for SyntaxTree<'a> {
-    fn from((rule, providence, children): (Rule, Providence<'a>, SyntaxChildren<'a>)) -> Self {
+impl <'a>From<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)> for SyntaxTree<'a> {
+    fn from((rule, providence, children): (Rule, Providence<'a>, Option<SyntaxChildren<'a>>)) -> Self {
         SyntaxTree { token: SyntaxToken { rule, providence }, children }
     }
 }

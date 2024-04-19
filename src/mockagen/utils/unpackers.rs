@@ -11,8 +11,8 @@ pub fn unpack_range<'a, T>(rule: Rule, make_values: fn(T, T) -> Value, trees: Ve
 where T: FromStr, PackingError<'a>: From<T::Err>
 {
     match vec_into_array_varied_length(trees)? {
-        [ Some((rule_lower, providence_lower @ Providence { src: lower_bound, .. }, SyntaxChildren::Leaf))
-        , Some((rule_upper, providence_upper @ Providence { src: upper_bound, .. }, SyntaxChildren::Leaf))
+        [ Some((rule_lower, providence_lower @ Providence { src: lower_bound, .. }, None))
+        , Some((rule_upper, providence_upper @ Providence { src: upper_bound, .. }, None))
         ] if rule_lower == rule && rule_upper == rule =>
         {
             let lower_bound = lower_bound.parse::<T>()
@@ -39,7 +39,7 @@ pub fn into_array<const N: usize>(pairs: Pairs<'_, Rule>) -> Result<[Pair<'_, Ru
         })
 }
 
-pub fn vec_into_array_varied_length<const N: usize>(vec: Vec<SyntaxTree>) -> Result<[Option<(Rule, Providence, SyntaxChildren)>; N], Error> {
+pub fn vec_into_array_varied_length<const N: usize>(vec: Vec<SyntaxTree>) -> Result<[Option<(Rule, Providence, Option<SyntaxChildren>)>; N], Error> {
     vec.into_iter()
         .filter(|tree| tree.token.rule != Rule::TAB)
         .map(|tree| Some((tree.token.rule, tree.token.providence, tree.children)))
@@ -47,7 +47,7 @@ pub fn vec_into_array_varied_length<const N: usize>(vec: Vec<SyntaxTree>) -> Res
         .take(N)
         .collect::<Vec<_>>()
         .try_into()
-        .map_err(|vec: Vec<Option<(Rule, Providence, SyntaxChildren)>>| {
+        .map_err(|vec: Vec<Option<(Rule, Providence, Option<SyntaxChildren>)>>| {
             let providence = vec.first().unwrap().as_ref().unwrap().1.clone(); // TODO fix this
 
             make_error_from_providence(providence, PackingError::SyntaxChildrenArrayCastError(vec))
