@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDate};
-use itertools::Itertools;
 use once_cell::sync::Lazy;
 use rand::{distributions::{Alphanumeric, DistString}, thread_rng, Rng};
 

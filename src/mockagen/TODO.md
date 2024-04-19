@@ -1,20 +1,10 @@
 # Mockagen
 
-The sequencer works but is messy.
-Some functions take RuleData, others Pair<'_, Rule>, others AnnotatedPairs<'_>. It's confusing.
-See if you can convert Pairs<> into a simpler type like Vec<Pair<'_, Rule>> and see if you can turn
-Pair<'_, Rule> into RuleData or something like it.
-I want everything to have the same type signature so that the code is a little more homogenous & consistent
+`Error` shouldn't need to take a lifetime parameter. Look into cloning data until you own it.
 
-Alright, so I don't forget, the reason I created RuleData was to let me destructure the data using match expressions. Pair & Pairs are opaque structs and that makes them more difficult to work with.
+I should look into enriching the errors that come out of the packer. At the moment I can see the providence of the error with relation to the input file, but I can't see any stack trace relating to the packer itself. Ideally I should be able to wrap the errors coming out with the name of the function that called it. Of course it seems rather silly to painstakingly re-implement such a basic language feature...
 
-I think I should make a struct that has the get_rules_arr_from_pairs stuff built right in.
-
-The purpose of the Providence struct is to create annotated errors.
-Hmm should I create a duplicate of the Providence struct that represents an owned copy?
-
-
-
+I could always throw the error and have done with it? Then again that'd reveal a lot of internal workings that the user shouldn't have to look at.
 
 
 What sort of type signature should I create for the evaluator?

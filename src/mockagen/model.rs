@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use chrono::NaiveDate;
 use pest::{iterators::Pair, Span};
 
@@ -148,13 +150,13 @@ pub struct SyntaxToken<'a> {
     pub providence: Providence<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SyntaxTree<'a> {
     pub token: SyntaxToken<'a>,
     pub children: Option<SyntaxChildren<'a>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum SyntaxChildren<'a> {
     One(Box<SyntaxTree<'a>>),
     Many(Vec<SyntaxTree<'a>>),
@@ -170,6 +172,22 @@ impl <'a>SyntaxChildren<'a> {
 
     pub fn get_values_iter(self) -> impl Iterator<Item = SyntaxTree<'a>> {
         self.get_values().into_iter()
+    }
+}
+
+impl <'a>Debug for SyntaxChildren<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyntaxChildren::One(val) => write!(f, "[ {:?} ]", val),
+            SyntaxChildren::Many(vals) => {
+                let rules = vals
+                    .iter()
+                    .map(|child| child.token.rule)
+                    .collect::<Vec<_>>();
+
+                write!(f, "[ {:#?} ]", rules)
+            }
+        }
     }
 }
 
@@ -203,5 +221,18 @@ impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
 impl <'a>From<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)> for SyntaxTree<'a> {
     fn from((rule, providence, children): (Rule, Providence<'a>, Option<SyntaxChildren<'a>>)) -> Self {
         SyntaxTree { token: SyntaxToken { rule, providence }, children }
+    }
+}
+
+impl <'a>Debug for SyntaxTree<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyntaxTree { token, children: None } =>
+                write!(f, "TreeLeaf {{ {:?} }}", token),
+
+            SyntaxTree { token, children: Some(children) } => {
+                write!(f, "TreeNode {{ {:?}, {:#?} }}", token, children)
+            }
+        }
     }
 }

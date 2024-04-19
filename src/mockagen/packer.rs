@@ -170,28 +170,22 @@ fn parse_names(trees: Vec<SyntaxTree>) -> Result<Vec<String>, Error> {
         }).collect()
 }
 
-fn parse_children(trees: Vec<SyntaxTree>) -> Result<Option<Vec<DefNode>>, Error> {
-    if 0 < trees.len() {
-        trees.into_iter()
-            .map(parse_nest_def_branch)
-            .collect::<Result<_, _>>()
-            .map(Some)
-    } else {
-        Ok(None)
-    }
-}
-
 fn parse_nest_def_branch(tree: SyntaxTree) -> Result<DefNode, Error> {
     match (tree.token.rule, tree.children) {
         (Rule::r#match, Some(children)) =>
             match vec_into_array_varied_length(children.get_values())? {
                 [ Some((Rule::matchers, _, Some(SyntaxChildren::One(matchers))))
                 , Some((Rule::match_sub_assignments | Rule::match_sub_matches, _, Some(children) ))
-                ] =>
+                ] => {
+                    let children = children.get_values_iter()
+                        .map(parse_nest_def_branch)
+                        .collect::<Result<_, _>>()?;
+
                     Ok(DefNode::Match {
                         matchers: parse_matchers(*matchers)?,
-                        children: parse_children(children.get_values())?
-                    }),
+                        children: Some(children),
+                    })
+                }
 
                 nodes =>
                     make_no_array_match_found_error(nodes),
@@ -199,15 +193,20 @@ fn parse_nest_def_branch(tree: SyntaxTree) -> Result<DefNode, Error> {
 
         (Rule::assign, Some(children)) =>
             match vec_into_array_varied_length(children.get_values())? {
-                [ Some((Rule::weighted_values, _, Some(weighted_value_pairs)))
-                , Some((Rule::sub_assignments, _, Some(sub_assignments_pairs)))
+                [ Some((Rule::weighted_values, _, Some(weighted_value_trees)))
+                , Some((Rule::sub_assignments, _, maybe_sub_assignment_trees))
                 ] => {
-                    let (maybe_weight, values_tree) = parse_maybe_weighted(weighted_value_pairs.get_values())?;
+                    let (maybe_weight, values_tree) = parse_maybe_weighted(weighted_value_trees.get_values())?;
+
+                    let children = match maybe_sub_assignment_trees {
+                        Some(trees) => Some(trees.get_values_iter().map(parse_nest_def_branch).collect::<Result<_, _>>()?),
+                        None => None
+                    };
 
                     Ok(DefNode::Assign {
                         weight: maybe_weight,
                         values: parse_values(values_tree)?,
-                        children: parse_children(sub_assignments_pairs.get_values())?
+                        children,
                     })
                 }
 
@@ -264,7 +263,7 @@ pub fn pack_mockagen(pairs: Pairs<'_, Rule>) -> Result<Vec<Statement>, Error> {
             (Rule::single_definition, Some(children)) =>
                 Some(parse_single_definition(children.get_values()).map(Statement::Definition)),
 
-            (Rule::nested_clauses, Some(children)) =>
+            (Rule::nested_definition, Some(children)) =>
                 Some(parse_nested_definition(children.get_values()).map(Statement::Definition)),
             
             (Rule::EOI, None) =>
