@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use pest::{iterators::{Pair, Pairs}, Span};
 
-use super::parser::Rule;
+use super::{evaluator::model::EvaluationError, parser::Rule};
 
 
 #[derive(Debug)]
@@ -12,6 +12,9 @@ pub enum Value {
     StringRange(i64, i64),
     RealRange(f64, f64),
     Join(Vec<Value>),
+
+    // Are these actually values? They can't be generated the way the others can.
+    // Perhaps they belong in a different enum
     Any,
     Identifier(String),
 }
@@ -27,7 +30,11 @@ pub struct WeightedValue {
 #[derive(Debug)]
 pub enum DefNode {
     Match { matchers: Vec<Value>, children: Option<Vec<DefNode>>},
-    Assign { weight: Option<Weight>, values: Vec<WeightedValue>, children: Option<Vec<DefNode>> }
+    Assign {
+        weight: Option<Weight>,
+        values: Vec<WeightedValue>,
+        children: Option<Vec<DefNode>>
+    }
 }
 
 #[derive(Debug)]
@@ -177,9 +184,10 @@ pub struct AnnotatedParsingError<'a> {
 }
 
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error<'a> { // TODO see about removing the lifetime specifier as it's more trouble than it's worth
     SequencingError(AnnotatedParsingError<'a>),
     ParsingError(pest::error::Error<Rule>),
+    EvaluationError(EvaluationError),
 }
 
 impl <'a>From<AnnotatedParsingError<'a>> for Error<'a> {
@@ -192,4 +200,25 @@ impl From<pest::error::Error<Rule>> for Error<'_> {
     fn from(value: pest::error::Error<Rule>) -> Self {
         Error::ParsingError(value)
     }
+}
+
+impl From<EvaluationError> for Error<'_> {
+    fn from(value: EvaluationError) -> Self {
+        Error::EvaluationError(value)
+    }
+}
+
+
+
+
+// Trying to figure out how to simplify the process of representing the AST
+
+struct Token<'a> {
+    token: Rule,
+    providence: Providence<'a>,
+}
+
+enum TokenTree<'a> {
+    Node(Token<'a>, Vec<TokenTree<'a>>),
+    Leaf(Token<'a>),
 }

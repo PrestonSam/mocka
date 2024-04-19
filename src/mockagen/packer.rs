@@ -65,7 +65,9 @@ fn parse_matchers<'a>(apairs: AnnotatedPairs<'a>) -> Result<Vec<Value>, Error<'a
             Ok(vec![ parse_value_from_inner(inner)? ]),
 
         [ Some(RuleData { rule: Rule::matcher_set, inner, .. }) ] =>
-            inner.pairs.map(|pair| parse_value_from_inner(AnnotatedPairs::from(pair))).collect(),
+            inner.pairs
+                .map(|pair| parse_value_from_inner(AnnotatedPairs::from(pair)))
+                .collect(),
 
         [ .. ] =>
             make_empty_inner_error(apairs.providence),
