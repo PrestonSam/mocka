@@ -3,7 +3,7 @@ use pest::iterators::Pairs;
 use crate::mockagen::utils::error::make_error_from_providence;
 
 use super::{
-    model::{DefNode, Definition, Error, PackingError, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue},
+    model::{DefNode, Definition, Error, MatchExpr, PackingError, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue},
     parser::Rule,
     utils::{
         error::{make_no_array_match_found_error, make_tree_shape_error},
@@ -35,9 +35,6 @@ fn parse_value_type(tree: SyntaxTree) -> Result<Value, Error> {
         (Rule::timestamp_date_value, Some(children)) =>
             unpack_range(Rule::DATE_LITERAL, Value::DateRange, children.get_values()),
 
-        (Rule::any_value, None) =>
-            Ok(Value::Any),
-
         (Rule::literal_value, Some(SyntaxChildren::One(string_literal))) =>
             Ok(Value::Literal(unpack_string_literal(*string_literal)?)),
 
@@ -55,14 +52,27 @@ fn parse_value_type(tree: SyntaxTree) -> Result<Value, Error> {
     }
 }
 
-fn parse_matchers(tree: SyntaxTree) -> Result<Vec<Value>, Error> {
+fn parse_match_expr(tree: SyntaxTree) -> Result<MatchExpr, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::value, Some(SyntaxChildren::One(child))) =>
-            Ok(vec![ parse_value_type(*child)? ]),
+        (Rule::literal_value, Some(SyntaxChildren::One(string_literal))) =>
+            Ok(MatchExpr::Literal(unpack_string_literal(*string_literal)?)),
+
+        (Rule::any_value, None) =>
+            Ok(MatchExpr::Any),
+
+        (rule, children) =>
+            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
+    }
+}
+
+fn parse_matchers(tree: SyntaxTree) -> Result<Vec<MatchExpr>, Error> {
+    match (tree.token.rule, tree.children) {
+        (Rule::match_expr, Some(SyntaxChildren::One(child))) =>
+            Ok(vec![ parse_match_expr(*child)? ]),
 
         (Rule::matcher_set, Some(children)) =>
             children.get_values_iter()
-                .map(parse_value_type)
+                .map(parse_match_expr)
                 .collect(),
 
         (rule, children) =>

@@ -36,11 +36,17 @@ match_sub_assignments = { (NEWLINE ~ assign)+ }
 match_sub_matches = { (NEWLINE ~ match)+ }
 
 matchers =
-    { value
+    { match_expr
     | matcher_set
     }
 
-matcher_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ value)+ }
+matcher_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ match_expr)+ }
+
+// TODO implement support for other match expressions in future
+match_expr =
+    { literal_value
+    | any_value
+    }
 
 
 assign = { PEEK_ALL ~ PUSH(TAB+) ~ "=" ~ weighted_values ~ sub_assignments ~ DROP }
@@ -70,7 +76,6 @@ value =
     | string_value
     | real_value
     | join_value
-    | any_value
     | identifier_value
     }
 

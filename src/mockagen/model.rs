@@ -6,6 +6,13 @@ use pest::{iterators::Pair, Span};
 use super::{evaluator::model::EvaluationError, parser::Rule};
 
 
+// TODO expand the supported expressions in future
+#[derive(Debug)]
+pub enum MatchExpr {
+    Literal(String),
+    Any,
+}
+
 #[derive(Debug)]
 pub enum Value {
     DateRange(NaiveDate, NaiveDate),
@@ -17,7 +24,6 @@ pub enum Value {
 
     // Are these actually values? They can't be generated the way the others can.
     // Perhaps they belong in a different enum
-    Any,
     Identifier(String),
 }
 
@@ -31,7 +37,10 @@ pub struct WeightedValue {
 
 #[derive(Debug)]
 pub enum DefNode {
-    Match { matchers: Vec<Value>, children: Option<Vec<DefNode>>},
+    Match {
+        matchers: Vec<MatchExpr>,
+        children: Option<Vec<DefNode>>
+    },
     Assign {
         weight: Option<Weight>,
         values: Vec<WeightedValue>,
