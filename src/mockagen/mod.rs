@@ -8,6 +8,8 @@ mod evaluator;
 
 pub fn run_mockagen(code: &str) -> Result<(), Error> {
     let pairs = parse_mockagen(code)?;
+    // dbg!(&pairs);
+    // todo!();
     let statements = pack_mockagen(pairs)?;
     dbg!(&statements);
     todo!();

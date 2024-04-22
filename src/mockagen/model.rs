@@ -36,16 +36,35 @@ pub struct WeightedValue {
 }
 
 #[derive(Debug)]
-pub enum DefNode {
+pub struct MatchNode {
+    pub matchers: Vec<MatchExpr>,
+    pub children: DefSet,
+}
+
+#[derive(Debug)]
+pub struct WildcardNode {
+    pub children: DefSet,
+}
+
+#[derive(Debug)]
+pub struct AssignNode {
+    pub weight: Option<Weight>,
+    pub values: Vec<WeightedValue>,
+    pub children: Option<Vec<AssignNode>>
+}
+
+#[derive(Debug)]
+pub enum DefSet {
     Match {
-        matchers: Vec<MatchExpr>,
-        children: Option<Vec<DefNode>>
+        nodes: Vec<MatchNode>
+    },
+    MatchWithWildCard {
+        nodes: Vec<MatchNode>,
+        wildcard_node: Box<WildcardNode>,
     },
     Assign {
-        weight: Option<Weight>,
-        values: Vec<WeightedValue>,
-        children: Option<Vec<DefNode>>
-    }
+        nodes: Vec<AssignNode>
+    },
 }
 
 #[derive(Debug)]
@@ -57,7 +76,7 @@ pub enum Definition {
     NestedDefinition {
         using_ids: Option<Vec<String>>,
         identifiers: Vec<String>,
-        branches: Vec<DefNode>,
+        def_set: DefSet,
     },
 }
 
@@ -206,7 +225,11 @@ impl <'a>From<Pair<'a, Rule>> for SyntaxTree<'a> {
         let providence = Providence { src: pair.as_str(), span: pair.as_span() };
         let token = SyntaxToken { rule, providence };
 
-        let mut inner = pair.into_inner();
+        let inner_without_tabs: Vec<_> = pair.into_inner()
+            .filter(|pair| pair.as_rule() != Rule::TAB)
+            .collect();
+
+        let mut inner = inner_without_tabs.into_iter();
 
         let children = match inner.len() {
             0 => None,

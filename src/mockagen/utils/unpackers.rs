@@ -28,7 +28,6 @@ where T: FromStr, PackingError<'a>: From<T::Err>
 
 pub fn vec_into_array_varied_length<const N: usize>(vec: Vec<SyntaxTree>) -> Result<[Option<(Rule, Providence, Option<SyntaxChildren>)>; N], Error> {
     vec.into_iter()
-        .filter(|tree| tree.token.rule != Rule::TAB)
         .map(|tree| Some((tree.token.rule, tree.token.providence, tree.children)))
         .chain(std::iter::repeat(None))
         .take(N)

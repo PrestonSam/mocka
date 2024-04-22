@@ -21,6 +21,5 @@ Although it'd definitely be easier to serialise.
 
 
 
-I think I need to explcitly separate the match values from the assignment values.
-I also need to separate out the primitive values from the higher order values.
+I need to separate out the primitive values from the higher order values.
 This should make it much clearer to tell what's going on, when I'm evaluating the AST.

@@ -3,7 +3,7 @@ use pest::iterators::Pairs;
 use crate::mockagen::utils::error::make_error_from_providence;
 
 use super::{
-    model::{DefNode, Definition, Error, MatchExpr, PackingError, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue},
+    model::{AssignNode, DefSet, Definition, Error, MatchExpr, MatchNode, PackingError, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode},
     parser::Rule,
     utils::{
         error::{make_no_array_match_found_error, make_tree_shape_error},
@@ -180,43 +180,16 @@ fn parse_names(trees: Vec<SyntaxTree>) -> Result<Vec<String>, Error> {
         }).collect()
 }
 
-fn parse_nest_def_branch(tree: SyntaxTree) -> Result<DefNode, Error> {
+fn parse_match_clause(tree: SyntaxTree) -> Result<MatchNode, Error> {
     match (tree.token.rule, tree.children) {
-        (Rule::r#match, Some(children)) =>
+        (Rule::match_clause, Some(children)) =>
             match vec_into_array_varied_length(children.get_values())? {
                 [ Some((Rule::matchers, _, Some(SyntaxChildren::One(matchers))))
-                , Some((Rule::match_sub_assignments | Rule::match_sub_matches, _, Some(children) ))
+                , Some((Rule::nested_clauses, _, Some(SyntaxChildren::One(tree)) ))
                 ] => {
-                    let children = children.get_values_iter()
-                        .map(parse_nest_def_branch)
-                        .collect::<Result<_, _>>()?;
-
-                    Ok(DefNode::Match {
+                    Ok(MatchNode {
                         matchers: parse_matchers(*matchers)?,
-                        children: Some(children),
-                    })
-                }
-
-                nodes =>
-                    make_no_array_match_found_error(nodes),
-            }
-
-        (Rule::assign, Some(children)) =>
-            match vec_into_array_varied_length(children.get_values())? {
-                [ Some((Rule::weighted_values, _, Some(weighted_value_trees)))
-                , Some((Rule::sub_assignments, _, maybe_sub_assignment_trees))
-                ] => {
-                    let (maybe_weight, values_tree) = parse_maybe_weighted(weighted_value_trees.get_values())?;
-
-                    let children = match maybe_sub_assignment_trees {
-                        Some(trees) => Some(trees.get_values_iter().map(parse_nest_def_branch).collect::<Result<_, _>>()?),
-                        None => None
-                    };
-
-                    Ok(DefNode::Assign {
-                        weight: maybe_weight,
-                        values: parse_values(values_tree)?,
-                        children,
+                        children: parse_def_set(*tree)?,
                     })
                 }
 
@@ -229,16 +202,111 @@ fn parse_nest_def_branch(tree: SyntaxTree) -> Result<DefNode, Error> {
     }
 }
 
+fn parse_assign_clause(tree: SyntaxTree) -> Result<AssignNode, Error> {
+    match (tree.token.rule, tree.children) {
+        (Rule::assign_clause, Some(children)) => {
+            let (weighted_value_trees, maybe_children) = match vec_into_array_varied_length(children.get_values())? {
+                [ Some((Rule::weighted_values, _, Some(weighted_value_trees)))
+                , Some((Rule::assign_clauses, _, Some(sub_assignment_trees)))
+                ] => {
+                    let children = sub_assignment_trees.get_values_iter()
+                        .map(parse_assign_clause)
+                        .collect::<Result<_, _>>()?;
+
+                    (weighted_value_trees, Some(children))
+                }
+
+                [ Some((Rule::weighted_values, _, Some(weighted_value_trees)))
+                , None
+                ] => 
+                    (weighted_value_trees, None),
+
+                nodes =>
+                    make_no_array_match_found_error(nodes)?,
+            };
+
+            let (maybe_weight, values_tree) = parse_maybe_weighted(weighted_value_trees.get_values())?;
+
+            Ok(AssignNode {
+                weight: maybe_weight,
+                values: parse_values(values_tree)?,
+                children: maybe_children,
+            })
+        }
+            
+
+        (rule, children) =>
+            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
+    }
+}
+
+fn parse_def_set(tree: SyntaxTree) -> Result<DefSet, Error> {
+    match (tree.token.rule, tree.children) {
+        (Rule::match_clauses, Some(children)) => {
+            Ok(DefSet::Match {
+                nodes: children.get_values_iter()
+                    .map(parse_match_clause)
+                    .collect::<Result<_, _>>()?
+            })
+        }
+
+        (Rule::match_clauses_with_wildcard, Some(children)) => {
+            match vec_into_array_varied_length(children.get_values())? {
+                [ Some((Rule::match_clauses, _, Some(match_clause_children)))
+                , Some((Rule::wildcard_clause, _, Some(SyntaxChildren::One(wildcard_nested_clauses))))
+                ] => {
+                    let nodes = match_clause_children.get_values_iter()
+                        .map(parse_match_clause)
+                        .collect::<Result<_, _>>()?;
+
+                    let wildcard_node = WildcardNode {
+                        children: parse_nested_clauses(*wildcard_nested_clauses)?
+                    };
+
+                    Ok(DefSet::MatchWithWildCard {
+                        nodes,
+                        wildcard_node: Box::new(wildcard_node),
+                    })
+                }
+
+                nodes =>
+                    make_no_array_match_found_error(nodes)?,
+            }
+        }
+
+        (Rule::assign_clauses, Some(children)) => {
+            Ok(DefSet::Assign {
+                nodes: children.get_values_iter()
+                    .map(parse_assign_clause)
+                    .collect::<Result<_, _>>()?
+            })
+        }
+
+        (rule, children) =>
+            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
+    }
+}
+
+fn parse_nested_clauses(tree: SyntaxTree) -> Result<DefSet, Error> {
+    match (tree.token.rule, tree.children) {
+        (Rule::nested_clauses, Some(SyntaxChildren::One(tree))) =>
+            parse_def_set(*tree),
+
+        (rule, children) =>
+            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
+    }
+}
+
 fn parse_nested_definition(tree: Vec<SyntaxTree>) -> Result<Definition, Error> {
     let (maybe_using_ids, assign_ids, nested_clauses) = match vec_into_array_varied_length(tree)? {
         [ Some((Rule::using_ids, _, Some(using_ids)))
         , Some((Rule::assign_ids, _, Some(assign_ids)))
-        , Some((Rule::nested_clauses, _, Some(nested_clauses)))
+        , Some((Rule::nested_clauses, _, Some(SyntaxChildren::One(nested_clauses))))
         ] =>
             (Some(parse_names(using_ids.get_values())?), assign_ids, nested_clauses),
 
         [ Some((Rule::assign_ids, _, Some(assign_ids)))
-        , Some((Rule::nested_clauses, _, Some(nested_clauses)))
+        , Some((Rule::nested_clauses, _, Some(SyntaxChildren::One(nested_clauses))))
         , None
         ] =>
             (None, assign_ids, nested_clauses),
@@ -247,16 +315,10 @@ fn parse_nested_definition(tree: Vec<SyntaxTree>) -> Result<Definition, Error> {
             make_no_array_match_found_error(nodes)?,
     };
 
-
-    let assign_ids = parse_names(assign_ids.get_values())?;
-    let branches = nested_clauses.get_values_iter()
-        .map(parse_nest_def_branch)
-        .collect::<Result<Vec<_>, Error>>()?;
-
     Ok(Definition::NestedDefinition {
         using_ids: maybe_using_ids,
-        identifiers: assign_ids,
-        branches
+        identifiers: parse_names(assign_ids.get_values())?,
+        def_set: parse_def_set(*nested_clauses)?,
     })
 }
 

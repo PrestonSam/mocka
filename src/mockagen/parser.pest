@@ -27,13 +27,20 @@ assign_ids = { names }
 names = _{ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 
 
-nested_clauses = { ((NEWLINE ~ match)+ | (NEWLINE ~ assign)+ ) } // FIXME shouldn't the PUSH(TAB+) ~ DROP syntax go here instead?
+nested_clauses =
+    { match_clauses_with_wildcard
+    | match_clauses
+    | assign_clauses
+    }
 
-match = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ matchers ~ (match_sub_assignments | match_sub_matches) ~ DROP }
+// Wildcard must always be the final clause
+match_clauses_with_wildcard = { match_clauses ~ NEWLINE ~ wildcard_clause }
 
-match_sub_assignments = { (NEWLINE ~ assign)+ }
+match_clauses = { (NEWLINE ~ match_clause)+ }
 
-match_sub_matches = { (NEWLINE ~ match)+ }
+match_clause = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ matchers ~ nested_clauses ~ DROP }
+
+wildcard_clause = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ any_value ~ nested_clauses ~ DROP }
 
 matchers =
     { match_expr
@@ -45,13 +52,11 @@ matcher_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ match_expr)+ }
 // TODO implement support for other match expressions in future
 match_expr =
     { literal_value
-    | any_value // I should look into restricting the 'any' clause to be present 0 or 1 times per match depth.
     }
 
+assign_clauses = { (NEWLINE ~ assign_clause)+ }
 
-assign = { PEEK_ALL ~ PUSH(TAB+) ~ "=" ~ weighted_values ~ sub_assignments ~ DROP }
-
-sub_assignments = { (NEWLINE ~ assign)* }
+assign_clause = { PEEK_ALL ~ PUSH(TAB+) ~ "=" ~ weighted_values ~ assign_clauses? ~ DROP }
 
 weighted_values = { WEIGHT? ~ values }
 
@@ -91,7 +96,7 @@ real_value = { "real" ~ REAL_LITERAL ~ REAL_LITERAL? }
 
 join_value = { "join" ~ (identifier_value | literal_value)+ }
 
-any_value = { "any" }
+any_value = _{ "any" }
 
 identifier_value = { IDENTIFIER }
 
