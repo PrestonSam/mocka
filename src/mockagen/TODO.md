@@ -9,7 +9,7 @@ I could always throw the error and have done with it? Then again that'd reveal a
 
 What sort of type signature should I create for the evaluator?
 
-In the last implementation, I returned a hash of functions with their names as the key.
+In the last implementation, I returned a hash of functions with their names as the key (although I believe ultimately this was unpacked and the function pointers were inserted directly into the mockadoc generated code).
 Of course the functions that have a USING clause must accept arguments, too.
 Presumably that means I'd have to order the rules by their dependencies?
 

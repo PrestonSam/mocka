@@ -2,19 +2,26 @@ use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDate};
 use once_cell::sync::Lazy;
-use rand::{distributions::{Alphanumeric, DistString}, thread_rng, Rng};
+use rand::{
+    distributions::{Alphanumeric, DistString},
+    thread_rng, Rng,
+};
 
-use crate::mockagen::{evaluator::model::EvaluationError, model::{Error, Value, WeightedValue}};
+use crate::mockagen::{
+    evaluator::model::EvaluationError,
+    model::{Error, Value, WeightedValue},
+};
 
 use super::model::OutValue;
 
 type Generator = Box<dyn Fn() -> OutValue>;
 
-
 fn make_date_range_gen(low: NaiveDate, high: NaiveDate) -> Generator {
     let range_size = high.signed_duration_since(low).num_days();
 
-    Box::new(move || OutValue::NaiveDate(low + Duration::days(thread_rng().gen_range(0..=range_size))))
+    Box::new(move || {
+        OutValue::NaiveDate(low + Duration::days(thread_rng().gen_range(0..=range_size)))
+    })
 }
 
 fn make_integer_range_gen(low: i64, high: i64) -> Generator {
@@ -37,13 +44,18 @@ fn make_literal_gen(literal: String) -> Generator {
     Box::new(move || OutValue::String(literal.clone()))
 }
 
-fn make_identifier_gen<'a>(identifier: String, context: &'a HashMap<String, &Generator>) -> Box<dyn Fn() -> Result<OutValue, Error<'a>> + 'a> {
+fn make_identifier_gen<'a>(
+    identifier: String,
+    context: &'a HashMap<String, &Generator>,
+) -> Box<dyn Fn() -> Result<OutValue, Error<'a>> + 'a> {
     // Make a lazy pointer to the value in the context
     let lazy = Lazy::new(move || context.get(&identifier).ok_or_else(|| identifier));
 
     Box::new(move || match lazy.as_deref() {
         Ok(fun) => Ok(fun()),
-        Err(identifier) => Err(Error::from(EvaluationError::MissingIdentifier(identifier.clone()))),
+        Err(identifier) => Err(Error::from(EvaluationError::MissingIdentifier(
+            identifier.clone(),
+        ))),
     })
 }
 
@@ -55,10 +67,10 @@ fn get_generator_from_value(value: Value) {
         Value::StringRange(low, high) => make_string_range_gen(low, high),
         Value::Literal(literal) => make_literal_gen(literal),
         Value::Identifier(identifier) => make_literal_gen(identifier),
-        _ => panic!("SEE FIXMES UNDER THIS LINE")
+        _ => panic!("SEE FIXMES UNDER THIS LINE"),
         // FIXME | 'any' is a matcher, not an assigner. I shouldn't be asked to handle it here
         // FIXME | 'join' is a higher order assigner and also shouldn't be handled here
-   };
+    };
 }
 
 // Presumably we could just create an enum that wraps all the possible return values.
@@ -77,36 +89,42 @@ fn get_values_and_weightings(wvals: Vec<WeightedValue>) -> Vec<(f64, Value)> {
 
         match weight {
             Some(weight) => total_explicit_percentage += weight,
-            None => implicit_percentage_count += 1.0
+            None => implicit_percentage_count += 1.0,
         }
     }
 
     let implicit_weighting = (100.0 - total_explicit_percentage) / implicit_percentage_count;
 
-    wvals.into_iter().map(move |wval| {
-        let WeightedValue { weight, value } = wval;
+    wvals
+        .into_iter()
+        .map(move |wval| {
+            let WeightedValue { weight, value } = wval;
 
-        (weight.unwrap_or(implicit_weighting), value)
-    }).collect()
+            (weight.unwrap_or(implicit_weighting), value)
+        })
+        .collect()
 }
 
-fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> impl FnMut() -> Result<OutValue, Error<'a>> {
+fn make_weighted_alternation_gen(wvals: Vec<WeightedValue>) -> Generator {
     let vals_and_weightings = get_values_and_weightings(wvals);
 
-    move || {
+    Box::new(move || {
         let mut chosen_value = thread_rng().gen_range(0.0..=100.0);
-        
-        let maybe_value = vals_and_weightings.iter().find_map(|(weighting, value)| {
-            chosen_value -= weighting;
 
-            Option::Some(value)
-                .filter(|_| 0.0 < chosen_value)
-        }).expect("Random number generator managed to generate number outside of percentage range");
+        let maybe_value = vals_and_weightings
+            .iter()
+            .find_map(|(weighting, value)| {
+                chosen_value -= weighting;
 
-        Ok::<&Value, Error>(maybe_value);
+                Option::Some(value)
+                    .filter(|_| 0.0 < chosen_value)
+            })
+            .expect("Random number generator managed to generate number outside of percentage range");
+
+        maybe_value;
 
         todo!()
-    }
+    })
 }
 
 fn make_join_gen(values: Vec<Value>) -> impl Fn() -> String {
@@ -115,6 +133,87 @@ fn make_join_gen(values: Vec<Value>) -> impl Fn() -> String {
     || todo!()
 }
 
-fn gen_gender() -> String {
-    todo!()
+fn make_gender_gen() -> Generator {
+    make_weighted_alternation_gen(vec![
+        WeightedValue {
+            weight: Some(30.0),
+            value: Value::Literal(String::from("Male")),
+        },
+        WeightedValue {
+            weight: Some(30.0),
+            value: Value::Literal(String::from("Female")),
+        },
+        WeightedValue {
+            weight: None,
+            value: Value::Literal(String::from("Business Entity")),
+        },
+    ])
+}
+
+fn make_age_gen() -> Generator {
+    make_integer_range_gen(18, 90)
+}
+
+fn make_payment_channel_gen(fsp_type: OutValue) -> Generator {
+    let gen_1 = make_weighted_alternation_gen(vec![
+        WeightedValue {
+            weight: Some(23.0),
+            value: Value::Literal(String::from("ATM")),
+        },
+        WeightedValue {
+            weight: Some(13.0),
+            value: Value::Literal(String::from("POS machine")),
+        },
+        WeightedValue {
+            weight: Some(9.0),
+            value: Value::Literal(String::from("Mobile banking")),
+        },
+        WeightedValue {
+            weight: Some(20.0),
+            value: Value::Literal(String::from("Internet banking")),
+        },
+        WeightedValue {
+            weight: Some(13.0),
+            value: Value::Literal(String::from("Branch")),
+        },
+        WeightedValue {
+            weight: Some(17.0),
+            value: Value::Literal(String::from("Agent")),
+        },
+        WeightedValue {
+            weight: None,
+            value: Value::Literal(String::from("Sub-branch"))
+        },
+    ]);
+
+    let gen_2 = make_weighted_alternation_gen(vec![
+        WeightedValue {
+            weight: Some(6.0),
+            value: Value::Literal(String::from("Mobile banking")),
+        },
+        WeightedValue {
+            weight: Some(7.0),
+            value: Value::Literal(String::from("Internet banking")),
+        },
+        WeightedValue {
+            weight: None,
+            value: Value::Literal(String::from("Branch")),
+        },
+        WeightedValue {
+            weight: Some(23.0),
+            value: Value::Literal(String::from("Agent")),
+        }
+    ]);
+
+    match fsp_type {
+        OutValue::String(str) =>
+            match str.as_str() {
+                "Commercial bank" => gen_1,
+                "Microfinance institution" => gen_2,
+
+                _ => todo!(),
+            }
+        _ => todo!(),
+    }
+    
 }
