@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use crate::mockagen::{model::{Error, PackingError, Providence, SyntaxChildren, SyntaxTree, Value}, parser::Rule};
+use crate::mockagen::{model::{Error, PackingError, Providence, SyntaxChildren, SyntaxTree, PrimitiveValue}, parser::Rule};
 
 use super::error::{make_error_from_providence, make_no_array_match_found_error};
 
 
-pub fn unpack_range<'a, T>(rule: Rule, make_values: fn(T, T) -> Value, trees: Vec<SyntaxTree<'a>>) -> Result<Value, Error>
+pub fn unpack_range<'a, T>(rule: Rule, make_values: fn(T, T) -> PrimitiveValue, trees: Vec<SyntaxTree<'a>>) -> Result<PrimitiveValue, Error>
 where T: FromStr, PackingError<'a>: From<T::Err>
 {
     match vec_into_array_varied_length(trees)? {

@@ -3,7 +3,7 @@ use pest::iterators::Pairs;
 use crate::mockagen::utils::error::make_error_from_providence;
 
 use super::{
-    model::{AssignNode, DefSet, Definition, Error, MatchExpr, MatchNode, PackingError, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode},
+    model::{AssignNode, DefSet, Definition, Error, HigherOrderValue, MatchExpr, MatchNode, PackingError, PrimitiveValue, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode},
     parser::Rule,
     utils::{
         error::{make_no_array_match_found_error, make_tree_shape_error},
@@ -21,31 +21,51 @@ fn unpack_string_literal(tree: SyntaxTree) -> Result<String, Error> {
     }
 }
 
-fn parse_value_type(tree: SyntaxTree) -> Result<Value, Error> {
+fn parse_primitive_value(tree: SyntaxTree) -> Result<PrimitiveValue, Error> {
     match (tree.token.rule, tree.children) {
         (Rule::integer_value, Some(children)) =>
-            unpack_range(Rule::INTEGER_LITERAL, Value::IntegerRange, children.get_values()),
+            unpack_range(Rule::INTEGER_LITERAL, PrimitiveValue::IntegerRange, children.get_values()),
 
         (Rule::real_value, Some(children)) =>
-            unpack_range(Rule::REAL_LITERAL, Value::RealRange, children.get_values()),
+            unpack_range(Rule::REAL_LITERAL, PrimitiveValue::RealRange, children.get_values()),
 
         (Rule::string_value, Some(children)) =>
-            unpack_range(Rule::INTEGER_LITERAL, Value::StringRange, children.get_values()),
+            unpack_range(Rule::INTEGER_LITERAL, PrimitiveValue::StringRange, children.get_values()),
 
         (Rule::timestamp_date_value, Some(children)) =>
-            unpack_range(Rule::DATE_LITERAL, Value::DateRange, children.get_values()),
+            unpack_range(Rule::DATE_LITERAL, PrimitiveValue::DateRange, children.get_values()),
 
         (Rule::literal_value, Some(SyntaxChildren::One(string_literal))) =>
-            Ok(Value::Literal(unpack_string_literal(*string_literal)?)),
+            Ok(PrimitiveValue::Literal(unpack_string_literal(*string_literal)?)),
 
+        (rule, children) =>
+            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
+    }
+}
+
+fn parse_higher_order_value(tree: SyntaxTree) -> Result<HigherOrderValue, Error> {
+    match (tree.token.rule, tree.children) {
         (Rule::identifier_value, Some(SyntaxChildren::One(identifier))) =>
-            Ok(Value::Identifier(identifier.token.providence.src.to_string())),
+            Ok(HigherOrderValue::Identifier(identifier.token.providence.src.to_string())),
 
         (Rule::join_value, Some(children)) =>
-            Ok(Value::Join(children.get_values_iter()
-                .map(parse_value_type)
+            Ok(HigherOrderValue::Join(children.get_values_iter()
+                .map(parse_value)
                 .collect::<Result<Vec<_>, Error>>()?)
             ),
+
+        (rule, children) =>
+            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
+    }
+}
+
+fn parse_value(tree: SyntaxTree) -> Result<Value, Error> {
+    match (tree.token.rule, tree.children) {
+        (Rule::primitive_value, Some(SyntaxChildren::One(child))) =>
+            Ok(Value::PrimitiveValue(parse_primitive_value(*child)?)),
+        
+        (Rule::higher_order_value, Some(SyntaxChildren::One(child))) =>
+            Ok(Value::HigherOrderValue(parse_higher_order_value(*child)?)),
 
         (rule, children) =>
             make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
@@ -114,7 +134,7 @@ fn parse_weighted_value(tree: SyntaxTree) -> Result<WeightedValue, Error> {
                 (Rule::value, Some(SyntaxChildren::One(value))) =>
                     Ok(WeightedValue {
                         weight: maybe_weight,
-                        value: parse_value_type(*value)?
+                        value: parse_value(*value)?
                     }),
 
                 (rule, children) =>
@@ -130,7 +150,7 @@ fn parse_weighted_value(tree: SyntaxTree) -> Result<WeightedValue, Error> {
 fn parse_weighted_value_or_set<'a>(tree: SyntaxTree<'a>) -> Result<Vec<WeightedValue>, Error<'a>> {
     match (tree.token.rule, tree.children) {
         (Rule::value, Some(SyntaxChildren::One(value_tree))) =>
-            Ok(vec![ WeightedValue { weight: None, value: parse_value_type(*value_tree)? } ]),
+            Ok(vec![ WeightedValue { weight: None, value: parse_value(*value_tree)? } ]),
 
         (Rule::value_set, Some(children)) =>
             children.get_values_iter()

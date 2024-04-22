@@ -14,17 +14,24 @@ pub enum MatchExpr {
 }
 
 #[derive(Debug)]
-pub enum Value {
+pub enum PrimitiveValue {
     DateRange(NaiveDate, NaiveDate),
     Literal(String),
     IntegerRange(i64, i64),
     StringRange(i64, i64),
     RealRange(f64, f64),
-    Join(Vec<Value>),
+}
 
-    // Are these actually values? They can't be generated the way the others can.
-    // Perhaps they belong in a different enum
+#[derive(Debug)]
+pub enum HigherOrderValue {
+    Join(Vec<Value>),
     Identifier(String),
+}
+
+#[derive(Debug)]
+pub enum Value {
+    PrimitiveValue(PrimitiveValue),
+    HigherOrderValue(HigherOrderValue),
 }
 
 pub type Weight = f64;
@@ -166,11 +173,6 @@ impl From<EvaluationError> for Error<'_> {
         Error::EvaluationError(value)
     }
 }
-
-
-
-
-// Trying to figure out how to simplify the process of representing the AST
 
 #[derive(Debug, Clone)]
 pub struct SyntaxToken<'a> {

@@ -72,9 +72,17 @@ weighted_value = { WEIGHT? ~ value }
 
 
 
-
-
 value =
+    { higher_order_value
+    | primitive_value
+    }
+
+higher_order_value =
+    { join_value
+    | identifier_value
+    }
+
+primitive_value =
     { timestamp_date_value
     | literal_value
     | integer_value
@@ -94,7 +102,7 @@ string_value = { "string" ~ INTEGER_LITERAL ~ INTEGER_LITERAL }
 
 real_value = { "real" ~ REAL_LITERAL ~ REAL_LITERAL? }
 
-join_value = { "join" ~ (identifier_value | literal_value)+ }
+join_value = { "join" ~ value+ }
 
 any_value = _{ "any" }
 

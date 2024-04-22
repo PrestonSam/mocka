@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-
 use chrono::{Duration, NaiveDate};
-use once_cell::sync::Lazy;
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng, Rng,
@@ -9,68 +6,92 @@ use rand::{
 
 use crate::mockagen::{
     evaluator::model::EvaluationError,
-    model::{AssignNode, DefSet, Definition, Error, MatchExpr, MatchNode, Value, WeightedValue, WildcardNode},
+    model::{AssignNode, DefSet, Definition, Error, HigherOrderValue, MatchExpr, MatchNode, PrimitiveValue, Value, WeightedValue, WildcardNode},
 };
 
-use super::model::OutValue;
+use super::model::{DefGen, Definitions, Generator, OutValue, ValueContext};
 
-type Generator = Box<dyn Fn() -> OutValue>;
 
-fn make_date_range_gen(low: NaiveDate, high: NaiveDate) -> Generator {
+fn make_date_range_gen<'a>(low: NaiveDate, high: NaiveDate) -> Generator<'a> {
     let range_size = high.signed_duration_since(low).num_days();
 
-    Box::new(move || {
-        OutValue::NaiveDate(low + Duration::days(thread_rng().gen_range(0..=range_size)))
+    Box::new(move |_| {
+        Ok(OutValue::NaiveDate(low + Duration::days(thread_rng().gen_range(0..=range_size))))
     })
 }
 
-fn make_integer_range_gen(low: i64, high: i64) -> Generator {
-    Box::new(move || OutValue::I64(thread_rng().gen_range(low..=high)))
+fn make_integer_range_gen<'a>(low: i64, high: i64) -> Generator<'a> {
+    Box::new(move |_| Ok(OutValue::I64(thread_rng().gen_range(low..=high))))
 }
 
-fn make_real_range_gen(low: f64, high: f64) -> Generator {
-    Box::new(move || OutValue::F64(thread_rng().gen_range(low..=high)))
+fn make_real_range_gen<'a>(low: f64, high: f64) -> Generator<'a> {
+    Box::new(move |_| Ok(OutValue::F64(thread_rng().gen_range(low..=high))))
 }
 
-fn make_string_range_gen(low: i64, high: i64) -> Generator {
-    Box::new(move || {
+fn make_string_range_gen<'a>(low: i64, high: i64) -> Generator<'a> {
+    Box::new(move |_| {
         let length = thread_rng().gen_range(low..=high) as usize;
 
-        OutValue::String(Alphanumeric.sample_string(&mut thread_rng(), length))
+        Ok(OutValue::String(Alphanumeric.sample_string(&mut thread_rng(), length)))
     })
 }
 
-fn make_literal_gen(literal: String) -> Generator {
-    Box::new(move || OutValue::String(literal.clone()))
+fn make_literal_gen<'a>(literal: String) -> Generator<'a> {
+    Box::new(move |_| Ok(OutValue::String(literal.clone())))
 }
 
-fn make_identifier_gen<'a>(
-    identifier: String,
-    context: &'a HashMap<String, &Generator>,
-) -> Box<dyn Fn() -> Result<OutValue, Error<'a>> + 'a> {
-    // Make a lazy pointer to the value in the context
-    let lazy = Lazy::new(move || context.get(&identifier).ok_or_else(|| identifier));
+fn make_identifier_gen<'a>(identifier: String) -> Generator<'a> {
+    Box::new(move |context| match context.get(&identifier) {
+        Some(value) =>
+            Ok(value.clone()),
 
-    Box::new(move || match lazy.as_deref() {
-        Ok(fun) => Ok(fun()),
-        Err(identifier) => Err(Error::from(EvaluationError::MissingIdentifier(
-            identifier.clone(),
-        ))),
+        None =>
+            Err(Error::from(EvaluationError::MissingIdentifier(identifier.clone()))),
     })
 }
 
-fn get_generator_from_value(value: Value) {
-    let generator = match value {
-        Value::DateRange(low, high) => make_date_range_gen(low, high),
-        Value::IntegerRange(low, high) => make_integer_range_gen(low, high),
-        Value::RealRange(low, high) => make_real_range_gen(low, high),
-        Value::StringRange(low, high) => make_string_range_gen(low, high),
-        Value::Literal(literal) => make_literal_gen(literal),
-        Value::Identifier(identifier) => make_literal_gen(identifier),
-        _ => panic!("SEE FIXMES UNDER THIS LINE"),
-        // FIXME | 'any' is a matcher, not an assigner. I shouldn't be asked to handle it here
-        // FIXME | 'join' is a higher order assigner and also shouldn't be handled here
-    };
+fn make_join_gen<'a>(values: Vec<Value>) -> Generator<'a> {
+    let generators: Vec<Generator<'a>> = values.into_iter()
+        .map(|value| get_generator_from_value(value))
+        .collect();
+
+    Box::new(move |context| {
+        let output = generators.iter()
+            .map(|gen| Ok::<_, Error<'a>>(gen(context)?.to_string()))
+            .collect::<Result<_, _>>()?;
+
+        Ok(OutValue::String(output))
+    })
+}
+
+fn get_generator_from_primitive_value<'a>(value: PrimitiveValue) -> Generator<'a> {
+    match value {
+        PrimitiveValue::DateRange(low, high) => make_date_range_gen(low, high),
+        PrimitiveValue::IntegerRange(low, high) => make_integer_range_gen(low, high),
+        PrimitiveValue::RealRange(low, high) => make_real_range_gen(low, high),
+        PrimitiveValue::StringRange(low, high) => make_string_range_gen(low, high),
+        PrimitiveValue::Literal(literal) => make_literal_gen(literal),
+    }
+}
+
+fn get_generator_from_higher_order_value<'a>(value: HigherOrderValue) -> Generator<'a> {
+    match value {
+        HigherOrderValue::Identifier(identifier) =>
+            make_identifier_gen(identifier),
+
+        HigherOrderValue::Join(values) =>
+            make_join_gen(values),
+    }
+}
+
+fn get_generator_from_value<'a>(value: Value) -> Generator<'a> {
+    match value {
+        Value::PrimitiveValue(value) =>
+            get_generator_from_primitive_value(value),
+
+        Value::HigherOrderValue(value) =>
+            get_generator_from_higher_order_value(value),
+    }
 }
 
 // Presumably we could just create an enum that wraps all the possible return values.
@@ -80,7 +101,7 @@ fn get_generator_from_value(value: Value) {
 // And it'd be much faster and would have better quality error messages.
 // Alright we'll do that, then
 
-fn get_values_and_weightings(wvals: Vec<WeightedValue>) -> Vec<(f64, Value)> {
+fn get_gens_and_weightings<'a>(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator<'a>)> {
     let mut total_explicit_percentage = 0.0;
     let mut implicit_percentage_count = 0.0;
 
@@ -100,122 +121,47 @@ fn get_values_and_weightings(wvals: Vec<WeightedValue>) -> Vec<(f64, Value)> {
         .map(move |wval| {
             let WeightedValue { weight, value } = wval;
 
-            (weight.unwrap_or(implicit_weighting), value)
+            (weight.unwrap_or(implicit_weighting), get_generator_from_value(value))
         })
         .collect()
 }
 
-fn make_weighted_alternation_gen(wvals: Vec<WeightedValue>) -> Generator {
-    let vals_and_weightings = get_values_and_weightings(wvals);
+fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator<'a> {
+    let vals_and_weightings = get_gens_and_weightings(wvals);
 
-    Box::new(move || {
-        let mut chosen_value = thread_rng().gen_range(0.0..=100.0);
+    Box::new(move |context| {
+        let mut chosen_percentage = thread_rng().gen_range(0.0..=100.0);
 
-        let maybe_value = vals_and_weightings
+        let gen = vals_and_weightings
             .iter()
-            .find_map(|(weighting, value)| {
-                chosen_value -= weighting;
+            .find_map(|(weighting, gen)| {
+                chosen_percentage -= weighting;
 
-                Option::Some(value)
-                    .filter(|_| 0.0 < chosen_value)
+                Option::Some(gen)
+                    .filter(|_| 0.0 < chosen_percentage)
             })
             .expect("Random number generator managed to generate number outside of percentage range");
 
-        maybe_value;
-
-        todo!()
+        gen(context)
     })
 }
 
-fn make_join_gen(values: Vec<Value>) -> impl Fn() -> String {
-    // You'd need to figure out what the gen functions are for these values.
-    // You'd then need to generate each sub-value and then cat all their results together
-    || todo!()
-}
-
-fn make_gender_gen() -> Generator {
-    make_weighted_alternation_gen(vec![
-        WeightedValue {
-            weight: Some(30.0),
-            value: Value::Literal(String::from("Male")),
-        },
-        WeightedValue {
-            weight: Some(30.0),
-            value: Value::Literal(String::from("Female")),
-        },
-        WeightedValue {
-            weight: None,
-            value: Value::Literal(String::from("Business Entity")),
-        },
-    ])
-}
-
-fn make_age_gen() -> Generator {
-    make_integer_range_gen(18, 90)
-}
-
-fn make_payment_channel_gen(fsp_type: OutValue) -> Generator {
-    let gen_1 = make_weighted_alternation_gen(vec![
-        WeightedValue {
-            weight: Some(23.0),
-            value: Value::Literal(String::from("ATM")),
-        },
-        WeightedValue {
-            weight: Some(13.0),
-            value: Value::Literal(String::from("POS machine")),
-        },
-        WeightedValue {
-            weight: Some(9.0),
-            value: Value::Literal(String::from("Mobile banking")),
-        },
-        WeightedValue {
-            weight: Some(20.0),
-            value: Value::Literal(String::from("Internet banking")),
-        },
-        WeightedValue {
-            weight: Some(13.0),
-            value: Value::Literal(String::from("Branch")),
-        },
-        WeightedValue {
-            weight: Some(17.0),
-            value: Value::Literal(String::from("Agent")),
-        },
-        WeightedValue {
-            weight: None,
-            value: Value::Literal(String::from("Sub-branch"))
-        },
-    ]);
-
-    let gen_2 = make_weighted_alternation_gen(vec![
-        WeightedValue {
-            weight: Some(6.0),
-            value: Value::Literal(String::from("Mobile banking")),
-        },
-        WeightedValue {
-            weight: Some(7.0),
-            value: Value::Literal(String::from("Internet banking")),
-        },
-        WeightedValue {
-            weight: None,
-            value: Value::Literal(String::from("Branch")),
-        },
-        WeightedValue {
-            weight: Some(23.0),
-            value: Value::Literal(String::from("Agent")),
+fn make_definition_gen<'a>(definition: Definition, context: &'a Definitions) -> Vec<DefGen<'a>> {
+    match definition {
+        Definition::NestedDefinition { using_ids, identifiers, def_set } => {
+            
+            todo!()
         }
-    ]);
 
-    match fsp_type {
-        OutValue::String(str) =>
-            match str.as_str() {
-                "Commercial bank" => gen_1,
-                "Microfinance institution" => gen_2,
-
-                _ => todo!(),
-            }
-        _ => todo!(),
+        Definition::SingleDefinition { identifier, values } => {
+            vec![
+                DefGen {
+                    id: identifier,
+                    gen: make_weighted_alternation_gen(values)
+                }
+            ]
+        }
     }
-    
 }
 
 fn get_debug_value() -> Definition {
@@ -233,11 +179,11 @@ fn get_debug_value() -> Definition {
                                 values: vec![
                                     WeightedValue {
                                         weight: Some(17.0),
-                                        value: Value::Literal("London".to_string()),
+                                        value: Value::PrimitiveValue(PrimitiveValue::Literal("London".to_string())),
                                     },
                                     WeightedValue {
                                         weight: Some(10.0),
-                                        value: Value::Literal("Manchester".to_string()),
+                                        value: Value::PrimitiveValue(PrimitiveValue::Literal("Manchester".to_string())),
                                     },
                                 ],
                                 children: None,
@@ -254,7 +200,7 @@ fn get_debug_value() -> Definition {
                             values: vec![
                                 WeightedValue {
                                     weight: None,
-                                    value: Value::Literal("Unknown".to_string()),
+                                    value: Value::PrimitiveValue(PrimitiveValue::Literal("Unknown".to_string())),
                                 },
                             ],
                             children: None,
