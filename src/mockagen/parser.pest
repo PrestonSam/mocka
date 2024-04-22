@@ -27,7 +27,7 @@ assign_ids = { names }
 names = _{ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 
 
-nested_clauses = { ((NEWLINE ~ match)+ | (NEWLINE ~ assign)+ ) }
+nested_clauses = { ((NEWLINE ~ match)+ | (NEWLINE ~ assign)+ ) } // FIXME shouldn't the PUSH(TAB+) ~ DROP syntax go here instead?
 
 match = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ matchers ~ (match_sub_assignments | match_sub_matches) ~ DROP }
 
@@ -45,7 +45,7 @@ matcher_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ match_expr)+ }
 // TODO implement support for other match expressions in future
 match_expr =
     { literal_value
-    | any_value
+    | any_value // I should look into restricting the 'any' clause to be present 0 or 1 times per match depth.
     }
 
 

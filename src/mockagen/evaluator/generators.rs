@@ -9,7 +9,7 @@ use rand::{
 
 use crate::mockagen::{
     evaluator::model::EvaluationError,
-    model::{Error, Value, WeightedValue},
+    model::{DefNode, Definition, Error, MatchExpr, Value, WeightedValue},
 };
 
 use super::model::OutValue;
@@ -216,4 +216,51 @@ fn make_payment_channel_gen(fsp_type: OutValue) -> Generator {
         _ => todo!(),
     }
     
+}
+
+fn get_debug_value() -> Definition {
+    Definition::NestedDefinition {
+        using_ids: Some(vec![ "country".to_owned() ]),
+        identifiers: vec![ "region".to_owned() ],
+        branches: vec![
+            DefNode::Match {
+                matchers: vec![ MatchExpr::Literal("United Kingdom".to_owned()) ],
+                children: Some(
+                    vec![
+                        DefNode::Assign {
+                            weight: None,
+                            values: vec![
+                                WeightedValue {
+                                    weight: Some(17.0),
+                                    value: Value::Literal("London".to_owned()),
+                                },
+                                WeightedValue {
+                                    weight: Some(10.0),
+                                    value: Value::Literal("Manchester".to_owned()),
+                                },
+                            ],
+                            children: None,
+                        },
+                    ],
+                ),
+            },
+            DefNode::Match {
+                matchers: vec![ MatchExpr::Any ],
+                children: Some(
+                    vec![
+                        DefNode::Assign {
+                            weight: None,
+                            values: vec![
+                                WeightedValue {
+                                    weight: None,
+                                    value: Value::Literal("Unknown".to_owned()),
+                                },
+                            ],
+                            children: None,
+                        }
+                    ]
+                )
+            }
+        ]
+    }
 }
