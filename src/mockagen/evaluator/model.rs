@@ -30,12 +30,10 @@ impl ToString for OutValue {
 
 pub type ValueContext = HashMap<String, OutValue>;
 
-pub type Generator<'a> = Box<dyn Fn(&'a ValueContext) -> Result<OutValue, Error<'a>>>;
-
-pub type Definitions<'a> = HashMap<String, Generator<'a>>;
+pub type Generator = Box<dyn Fn(&ValueContext) -> Result<OutValue, Error>>;
 
 // TODO figure out how passing parameters might work
-pub struct DefGen<'a> {
+pub struct DefGen {
     pub id: String,
-    pub gen: Generator<'a>,
+    pub gen: Generator,
 }

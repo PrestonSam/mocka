@@ -5,6 +5,6 @@ use super::model::{Definition, Error, Statement};
 mod generators;
 pub mod model;
 
-pub fn evaluate_mockagen<'a>(statements: Vec<Statement>) -> Result<(), Error<'a>> {
+pub fn evaluate_mockagen<'a>(statements: Vec<Statement>) -> Result<(), Error> {
     todo!()
 }

@@ -147,7 +147,7 @@ fn parse_weighted_value(tree: SyntaxTree) -> Result<WeightedValue, Error> {
     }
 }
 
-fn parse_weighted_value_or_set<'a>(tree: SyntaxTree<'a>) -> Result<Vec<WeightedValue>, Error<'a>> {
+fn parse_weighted_value_or_set<'a>(tree: SyntaxTree<'a>) -> Result<Vec<WeightedValue>, Error> {
     match (tree.token.rule, tree.children) {
         (Rule::value, Some(SyntaxChildren::One(value_tree))) =>
             Ok(vec![ WeightedValue { weight: None, value: parse_value(*value_tree)? } ]),

@@ -116,59 +116,59 @@ impl <'a>core::fmt::Debug for Providence<'a> {
 }
 
 #[derive(Debug)]
-pub enum PackingError<'a> { // At some point I'll have to break this out into sub-errors
-    SyntaxUnhandledTreeShape(SyntaxTree<'a>),
-    SyntaxChildrenArrayCastError(Vec<Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>>), // TODO This could probably use a type alias
-    SyntaxNodeCountMismatch(Vec<Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>>), // TODO This could probably use a type alias
+pub enum PackingError { // At some point I'll have to break this out into sub-errors
+    SyntaxUnhandledTreeShape(String),
+    SyntaxChildrenArrayCastError(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
+    SyntaxNodeCountMismatch(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     ParseIntError(core::num::ParseIntError),
     ParseRealError(core::num::ParseFloatError),
     DateParseError(chrono::ParseError),
 }
 
-impl From<core::num::ParseIntError> for PackingError<'_> {
+impl From<core::num::ParseIntError> for PackingError {
     fn from(value: core::num::ParseIntError) -> Self {
         PackingError::ParseIntError(value)
     }
 }
 
-impl From<core::num::ParseFloatError> for PackingError<'_> {
+impl From<core::num::ParseFloatError> for PackingError {
     fn from(value: core::num::ParseFloatError) -> Self {
         PackingError::ParseRealError(value)
     }
 }
 
-impl From<chrono::ParseError> for PackingError<'_> {
+impl From<chrono::ParseError> for PackingError {
     fn from(value: chrono::ParseError) -> Self {
         PackingError::DateParseError(value)
     }
 }
 
 #[derive(Debug)]
-pub struct AnnotatedPackingError<'a> {
-    pub error: PackingError<'a>,
-    pub providence: Providence<'a>,
+pub struct AnnotatedPackingError {
+    pub error: PackingError,
+    pub providence: String,
 }
 
 #[derive(Debug)]
-pub enum Error<'a> { // TODO see about removing the lifetime specifier as it's more trouble than it's worth
-    PackingError(AnnotatedPackingError<'a>),
+pub enum Error { // TODO see about removing the lifetime specifier as it's more trouble than it's worth
+    PackingError(AnnotatedPackingError),
     ParsingError(pest::error::Error<Rule>),
     EvaluationError(EvaluationError),
 }
 
-impl <'a>From<AnnotatedPackingError<'a>> for Error<'a> {
-    fn from(value: AnnotatedPackingError<'a>) -> Self {
+impl <'a>From<AnnotatedPackingError> for Error {
+    fn from(value: AnnotatedPackingError) -> Self {
         Error::PackingError(value)
     }
 }
 
-impl From<pest::error::Error<Rule>> for Error<'_> {
+impl From<pest::error::Error<Rule>> for Error {
     fn from(value: pest::error::Error<Rule>) -> Self {
         Error::ParsingError(value)
     }
 }
 
-impl From<EvaluationError> for Error<'_> {
+impl From<EvaluationError> for Error {
     fn from(value: EvaluationError) -> Self {
         Error::EvaluationError(value)
     }

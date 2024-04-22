@@ -9,10 +9,10 @@ use crate::mockagen::{
     model::{AssignNode, DefSet, Definition, Error, HigherOrderValue, MatchExpr, MatchNode, PrimitiveValue, Value, WeightedValue, WildcardNode},
 };
 
-use super::model::{DefGen, Definitions, Generator, OutValue, ValueContext};
+use super::model::{DefGen, Generator, OutValue};
 
 
-fn make_date_range_gen<'a>(low: NaiveDate, high: NaiveDate) -> Generator<'a> {
+fn make_date_range_gen<'a>(low: NaiveDate, high: NaiveDate) -> Generator {
     let range_size = high.signed_duration_since(low).num_days();
 
     Box::new(move |_| {
@@ -20,15 +20,15 @@ fn make_date_range_gen<'a>(low: NaiveDate, high: NaiveDate) -> Generator<'a> {
     })
 }
 
-fn make_integer_range_gen<'a>(low: i64, high: i64) -> Generator<'a> {
+fn make_integer_range_gen<'a>(low: i64, high: i64) -> Generator {
     Box::new(move |_| Ok(OutValue::I64(thread_rng().gen_range(low..=high))))
 }
 
-fn make_real_range_gen<'a>(low: f64, high: f64) -> Generator<'a> {
+fn make_real_range_gen<'a>(low: f64, high: f64) -> Generator {
     Box::new(move |_| Ok(OutValue::F64(thread_rng().gen_range(low..=high))))
 }
 
-fn make_string_range_gen<'a>(low: i64, high: i64) -> Generator<'a> {
+fn make_string_range_gen<'a>(low: i64, high: i64) -> Generator {
     Box::new(move |_| {
         let length = thread_rng().gen_range(low..=high) as usize;
 
@@ -36,11 +36,11 @@ fn make_string_range_gen<'a>(low: i64, high: i64) -> Generator<'a> {
     })
 }
 
-fn make_literal_gen<'a>(literal: String) -> Generator<'a> {
+fn make_literal_gen<'a>(literal: String) -> Generator {
     Box::new(move |_| Ok(OutValue::String(literal.clone())))
 }
 
-fn make_identifier_gen<'a>(identifier: String) -> Generator<'a> {
+fn make_identifier_gen<'a>(identifier: String) -> Generator {
     Box::new(move |context| match context.get(&identifier) {
         Some(value) =>
             Ok(value.clone()),
@@ -50,21 +50,21 @@ fn make_identifier_gen<'a>(identifier: String) -> Generator<'a> {
     })
 }
 
-fn make_join_gen<'a>(values: Vec<Value>) -> Generator<'a> {
-    let generators: Vec<Generator<'a>> = values.into_iter()
+fn make_join_gen<'a>(values: Vec<Value>) -> Generator {
+    let generators: Vec<Generator> = values.into_iter()
         .map(|value| get_generator_from_value(value))
         .collect();
 
     Box::new(move |context| {
         let output = generators.iter()
-            .map(|gen| Ok::<_, Error<'a>>(gen(context)?.to_string()))
+            .map(|gen| Ok::<_, Error>(gen(context)?.to_string()))
             .collect::<Result<_, _>>()?;
 
         Ok(OutValue::String(output))
     })
 }
 
-fn get_generator_from_primitive_value<'a>(value: PrimitiveValue) -> Generator<'a> {
+fn get_generator_from_primitive_value<'a>(value: PrimitiveValue) -> Generator {
     match value {
         PrimitiveValue::DateRange(low, high) => make_date_range_gen(low, high),
         PrimitiveValue::IntegerRange(low, high) => make_integer_range_gen(low, high),
@@ -74,7 +74,7 @@ fn get_generator_from_primitive_value<'a>(value: PrimitiveValue) -> Generator<'a
     }
 }
 
-fn get_generator_from_higher_order_value<'a>(value: HigherOrderValue) -> Generator<'a> {
+fn get_generator_from_higher_order_value<'a>(value: HigherOrderValue) -> Generator {
     match value {
         HigherOrderValue::Identifier(identifier) =>
             make_identifier_gen(identifier),
@@ -84,7 +84,7 @@ fn get_generator_from_higher_order_value<'a>(value: HigherOrderValue) -> Generat
     }
 }
 
-fn get_generator_from_value<'a>(value: Value) -> Generator<'a> {
+fn get_generator_from_value<'a>(value: Value) -> Generator {
     match value {
         Value::PrimitiveValue(value) =>
             get_generator_from_primitive_value(value),
@@ -101,7 +101,7 @@ fn get_generator_from_value<'a>(value: Value) -> Generator<'a> {
 // And it'd be much faster and would have better quality error messages.
 // Alright we'll do that, then
 
-fn get_gens_and_weightings<'a>(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator<'a>)> {
+fn get_gens_and_weightings<'a>(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator)> {
     let mut total_explicit_percentage = 0.0;
     let mut implicit_percentage_count = 0.0;
 
@@ -126,7 +126,7 @@ fn get_gens_and_weightings<'a>(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator
         .collect()
 }
 
-fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator<'a> {
+fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator {
     let vals_and_weightings = get_gens_and_weightings(wvals);
 
     Box::new(move |context| {
@@ -146,7 +146,7 @@ fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator<'a>
     })
 }
 
-fn make_definition_gen<'a>(definition: Definition, context: &'a Definitions) -> Vec<DefGen<'a>> {
+fn make_definition_gen<'a>(definition: Definition) -> Vec<DefGen> {
     match definition {
         Definition::NestedDefinition { using_ids, identifiers, def_set } => {
             

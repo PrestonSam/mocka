@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use crate::mockagen::{model::{Error, PackingError, Providence, SyntaxChildren, SyntaxTree, PrimitiveValue}, parser::Rule};
 
-use super::error::{make_error_from_providence, make_no_array_match_found_error};
+use super::error::{make_error_from_providence, make_no_array_match_found_error, reformat_rule_matcher_vec, to_debug};
 
 
 pub fn unpack_range<'a, T>(rule: Rule, make_values: fn(T, T) -> PrimitiveValue, trees: Vec<SyntaxTree<'a>>) -> Result<PrimitiveValue, Error>
-where T: FromStr, PackingError<'a>: From<T::Err>
+where T: FromStr, PackingError: From<T::Err>
 {
     match vec_into_array_varied_length(trees)? {
         [ Some((rule_lower, providence_lower @ Providence { src: lower_bound, .. }, None))
@@ -34,8 +34,8 @@ pub fn vec_into_array_varied_length<const N: usize>(vec: Vec<SyntaxTree>) -> Res
         .collect::<Vec<_>>()
         .try_into()
         .map_err(|vec: Vec<Option<(Rule, Providence, Option<SyntaxChildren>)>>| {
-            let providence = vec.first().unwrap().as_ref().unwrap().1.clone(); // TODO fix this
+            let (providence, reformatted_vec) = reformat_rule_matcher_vec(vec);
 
-            make_error_from_providence(providence, PackingError::SyntaxChildrenArrayCastError(vec))
+            make_error_from_providence(providence, PackingError::SyntaxChildrenArrayCastError(reformatted_vec))
         })
 }
