@@ -43,7 +43,7 @@ fn make_literal_gen<'a>(literal: String) -> Generator {
 fn make_identifier_gen<'a>(identifier: String) -> Generator {
     Box::new(move |context| match context.get(&identifier) {
         Some(value) =>
-            Ok(value.clone()),
+            Ok(value()),
 
         None =>
             Err(Error::from(EvaluationError::MissingIdentifier(identifier.clone()))),
@@ -146,7 +146,7 @@ fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator {
     })
 }
 
-fn make_definition_gen<'a>(definition: Definition) -> Vec<DefGen> {
+pub fn make_definition_gen<'a>(definition: Definition) -> Vec<DefGen> {
     match definition {
         Definition::NestedDefinition { using_ids, identifiers, def_set } => {
             

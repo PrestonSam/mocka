@@ -28,7 +28,7 @@ impl ToString for OutValue {
     }
 }
 
-pub type ValueContext = HashMap<String, OutValue>;
+pub type ValueContext = HashMap<String, Box<dyn Fn() -> OutValue>>;
 
 pub type Generator = Box<dyn Fn(&ValueContext) -> Result<OutValue, Error>>;
 
