@@ -20,6 +20,7 @@ I'm not confident it would be, tbh.
 Although it'd definitely be easier to serialise.
 
 
-
-I need to separate out the primitive values from the higher order values.
-This should make it much clearer to tell what's going on, when I'm evaluating the AST.
+### I think I should order the dependencies
+I think it's worth the headache for two reasons
+ - I can detect circular dependencies and produce an error at a more convenient time
+ - I can eagerly run the generators without risking a missing dependency. This should simplify the type signature of the generators

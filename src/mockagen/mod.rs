@@ -11,9 +11,7 @@ pub fn run_mockagen(code: &str) -> Result<(), Error> {
     // dbg!(&pairs);
     // todo!();
     let statements = pack_mockagen(pairs)?;
-    dbg!(&statements);
-    todo!();
-    let evaluation = evaluate_mockagen(statements)?;
+    let evaluation = evaluate_mockagen(statements);
     dbg!(&evaluation);
     
     Ok(())

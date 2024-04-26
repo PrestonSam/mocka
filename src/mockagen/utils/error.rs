@@ -15,7 +15,7 @@ pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, Error> {
     )
 }
 
-pub fn make_no_array_match_found_error<'a, T, const N: usize>(nodes: [Option<(Rule, Providence<'a>, Option<SyntaxChildren<'a>>)>; N]) -> Result<T, Error> {
+pub fn make_no_array_match_found_error<T, const N: usize>(nodes: [Option<(Rule, Providence, Option<SyntaxChildren>)>; N]) -> Result<T, Error> {
     let (providence, reformatted_vec) = reformat_rule_matcher_vec(nodes.to_vec());
 
     Err(make_error_from_providence(providence, PackingError::SyntaxNodeCountMismatch(reformatted_vec)))

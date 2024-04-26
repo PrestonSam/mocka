@@ -12,7 +12,7 @@ use crate::mockagen::{
 use super::model::{DefGen, Generator, OutValue};
 
 
-fn make_date_range_gen<'a>(low: NaiveDate, high: NaiveDate) -> Generator {
+fn make_date_range_gen(low: NaiveDate, high: NaiveDate) -> Generator {
     let range_size = high.signed_duration_since(low).num_days();
 
     Box::new(move |_| {
@@ -20,15 +20,15 @@ fn make_date_range_gen<'a>(low: NaiveDate, high: NaiveDate) -> Generator {
     })
 }
 
-fn make_integer_range_gen<'a>(low: i64, high: i64) -> Generator {
+fn make_integer_range_gen(low: i64, high: i64) -> Generator {
     Box::new(move |_| Ok(OutValue::I64(thread_rng().gen_range(low..=high))))
 }
 
-fn make_real_range_gen<'a>(low: f64, high: f64) -> Generator {
+fn make_real_range_gen(low: f64, high: f64) -> Generator {
     Box::new(move |_| Ok(OutValue::F64(thread_rng().gen_range(low..=high))))
 }
 
-fn make_string_range_gen<'a>(low: i64, high: i64) -> Generator {
+fn make_string_range_gen(low: i64, high: i64) -> Generator {
     Box::new(move |_| {
         let length = thread_rng().gen_range(low..=high) as usize;
 
@@ -36,21 +36,21 @@ fn make_string_range_gen<'a>(low: i64, high: i64) -> Generator {
     })
 }
 
-fn make_literal_gen<'a>(literal: String) -> Generator {
+fn make_literal_gen(literal: String) -> Generator {
     Box::new(move |_| Ok(OutValue::String(literal.clone())))
 }
 
-fn make_identifier_gen<'a>(identifier: String) -> Generator {
-    Box::new(move |context| match context.get(&identifier) {
+fn make_identifier_gen(identifier: String) -> Generator {
+    Box::new(move |context| match context.get(identifier.as_str()) {
         Some(value) =>
-            Ok(value()),
+            Ok((*value).clone()),
 
         None =>
             Err(Error::from(EvaluationError::MissingIdentifier(identifier.clone()))),
     })
 }
 
-fn make_join_gen<'a>(values: Vec<Value>) -> Generator {
+fn make_join_gen(values: Vec<Value>) -> Generator {
     let generators: Vec<Generator> = values.into_iter()
         .map(|value| get_generator_from_value(value))
         .collect();
@@ -64,7 +64,7 @@ fn make_join_gen<'a>(values: Vec<Value>) -> Generator {
     })
 }
 
-fn get_generator_from_primitive_value<'a>(value: PrimitiveValue) -> Generator {
+fn get_generator_from_primitive_value(value: PrimitiveValue) -> Generator {
     match value {
         PrimitiveValue::DateRange(low, high) => make_date_range_gen(low, high),
         PrimitiveValue::IntegerRange(low, high) => make_integer_range_gen(low, high),
@@ -94,14 +94,7 @@ fn get_generator_from_value<'a>(value: Value) -> Generator {
     }
 }
 
-// Presumably we could just create an enum that wraps all the possible return values.
-// Then we implement the ToStr trait for that.
-// Then we can just return errors if you can't unpack the thing that you're looking for.
-// It's definitely a lot better than returning a string that you're expected to parse again.
-// And it'd be much faster and would have better quality error messages.
-// Alright we'll do that, then
-
-fn get_gens_and_weightings<'a>(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator)> {
+fn get_gens_and_weightings(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator)> {
     let mut total_explicit_percentage = 0.0;
     let mut implicit_percentage_count = 0.0;
 
@@ -126,7 +119,7 @@ fn get_gens_and_weightings<'a>(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator
         .collect()
 }
 
-fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator {
+fn make_weighted_alternation_gen(wvals: Vec<WeightedValue>) -> Generator {
     let vals_and_weightings = get_gens_and_weightings(wvals);
 
     Box::new(move |context| {
@@ -138,7 +131,7 @@ fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator {
                 chosen_percentage -= weighting;
 
                 Option::Some(gen)
-                    .filter(|_| 0.0 < chosen_percentage)
+                    .filter(|_| chosen_percentage <= 0.0)
             })
             .expect("Random number generator managed to generate number outside of percentage range");
 
@@ -146,18 +139,42 @@ fn make_weighted_alternation_gen<'a>(wvals: Vec<WeightedValue>) -> Generator {
     })
 }
 
-pub fn make_definition_gen<'a>(definition: Definition) -> Vec<DefGen> {
+fn get_dependencies_from_values(values: &[&Value]) -> Vec<String> {
+    values.iter()
+        .filter_map(|value| match value {
+            Value::HigherOrderValue(hov) => Some(hov),
+            _ => None,
+        }).flat_map(|hov|
+            match hov {
+                HigherOrderValue::Identifier(id) =>
+                    vec![ id.clone() ],
+
+                HigherOrderValue::Join(values) =>
+                    get_dependencies_from_values(values.iter().collect::<Vec<_>>().as_slice()),
+            }
+        ).collect()
+}
+
+pub fn make_definition_gens(definition: Definition) -> Vec<DefGen> {
     match definition {
         Definition::NestedDefinition { using_ids, identifiers, def_set } => {
-            
+            // make derived alternation generator
+            // use the identifiers from the `identifiers` vector
+            // you need to have an impl Into<_> for Matchers into OutValue or perhaps it's the other way around something like that.
+            // Of course it's an error if you don't succeed - so perhaps it's TryInto<_> that you should be implementing
             todo!()
         }
 
-        Definition::SingleDefinition { identifier, values } => {
+        Definition::SingleDefinition { identifier, values: weighted_values } => {
+            let values: Vec<_> = weighted_values.iter()
+                .map(|wval| &wval.value)
+                .collect();
+
             vec![
                 DefGen {
                     id: identifier,
-                    gen: make_weighted_alternation_gen(values)
+                    dependencies: get_dependencies_from_values(&values),
+                    gen: make_weighted_alternation_gen(weighted_values),
                 }
             ]
         }

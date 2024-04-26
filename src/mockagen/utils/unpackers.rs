@@ -2,10 +2,10 @@ use std::str::FromStr;
 
 use crate::mockagen::{model::{Error, PackingError, Providence, SyntaxChildren, SyntaxTree, PrimitiveValue}, parser::Rule};
 
-use super::error::{make_error_from_providence, make_no_array_match_found_error, reformat_rule_matcher_vec, to_debug};
+use super::error::{make_error_from_providence, make_no_array_match_found_error, reformat_rule_matcher_vec};
 
 
-pub fn unpack_range<'a, T>(rule: Rule, make_values: fn(T, T) -> PrimitiveValue, trees: Vec<SyntaxTree<'a>>) -> Result<PrimitiveValue, Error>
+pub fn unpack_range<T>(rule: Rule, make_values: fn(T, T) -> PrimitiveValue, trees: Vec<SyntaxTree>) -> Result<PrimitiveValue, Error>
 where T: FromStr, PackingError: From<T::Err>
 {
     match vec_into_array_varied_length(trees)? {
