@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use chrono::{Duration, NaiveDate};
 use rand::{
     distributions::{Alphanumeric, DistString},
@@ -6,10 +8,10 @@ use rand::{
 
 use crate::mockagen::{
     evaluator::model::EvaluationError,
-    model::{AssignNode, DefSet, Definition, Error, HigherOrderValue, MatchExpr, MatchNode, PrimitiveValue, Value, WeightedValue, WildcardNode},
+    model::{DefNode, Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode, MockagenError, NestedAssignNode, NestedDefNode, PrimitiveValue, TerminalAssignNode, TerminalDefNode, Value, WeightedValue}, utils::iterator::Transpose,
 };
 
-use super::model::{DefGen, Generator, OutValue};
+use super::model::{DefGen, Generator, MaybeWeighted, OutValue, WeightedT};
 
 
 fn make_date_range_gen(low: NaiveDate, high: NaiveDate) -> Generator {
@@ -21,10 +23,22 @@ fn make_date_range_gen(low: NaiveDate, high: NaiveDate) -> Generator {
 }
 
 fn make_integer_range_gen(low: i64, high: i64) -> Generator {
+    // For negative inputs i.e. from -100 to -1000
+    let (low, high) = match low < high {
+        true => (low, high),
+        false => (high, low)
+    };
+
     Box::new(move |_| Ok(OutValue::I64(thread_rng().gen_range(low..=high))))
 }
 
 fn make_real_range_gen(low: f64, high: f64) -> Generator {
+    // For negative inputs i.e. from -100 to -1000
+    let (low, high) = match low < high {
+        true => (low, high),
+        false => (high, low)
+    };
+
     Box::new(move |_| Ok(OutValue::F64(thread_rng().gen_range(low..=high))))
 }
 
@@ -41,13 +55,11 @@ fn make_literal_gen(literal: String) -> Generator {
 }
 
 fn make_identifier_gen(identifier: String) -> Generator {
-    Box::new(move |context| match context.get(identifier.as_str()) {
-        Some(value) =>
-            Ok((*value).clone()),
-
-        None =>
-            Err(Error::from(EvaluationError::MissingIdentifier(identifier.clone()))),
-    })
+    Box::new(move |context|
+        context.get(identifier.as_str())
+            .map(|value| value.clone())
+            .ok_or_else(|| MockagenError::from_eval_err(EvaluationError::MissingIdentifier(identifier.clone())))
+    )
 }
 
 fn make_join_gen(values: Vec<Value>) -> Generator {
@@ -57,7 +69,7 @@ fn make_join_gen(values: Vec<Value>) -> Generator {
 
     Box::new(move |context| {
         let output = generators.iter()
-            .map(|gen| Ok::<_, Error>(gen(context)?.to_string()))
+            .map(|gen| Ok::<_, MockagenError>(gen(context)?.to_string()))
             .collect::<Result<_, _>>()?;
 
         Ok(OutValue::String(output))
@@ -74,7 +86,7 @@ fn get_generator_from_primitive_value(value: PrimitiveValue) -> Generator {
     }
 }
 
-fn get_generator_from_higher_order_value<'a>(value: HigherOrderValue) -> Generator {
+fn get_generator_from_higher_order_value(value: HigherOrderValue) -> Generator {
     match value {
         HigherOrderValue::Identifier(identifier) =>
             make_identifier_gen(identifier),
@@ -84,7 +96,7 @@ fn get_generator_from_higher_order_value<'a>(value: HigherOrderValue) -> Generat
     }
 }
 
-fn get_generator_from_value<'a>(value: Value) -> Generator {
+fn get_generator_from_value(value: Value) -> Generator {
     match value {
         Value::PrimitiveValue(value) =>
             get_generator_from_primitive_value(value),
@@ -94,12 +106,12 @@ fn get_generator_from_value<'a>(value: Value) -> Generator {
     }
 }
 
-fn get_gens_and_weightings(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator)> {
+fn determine_implicit_weightings<T>(maybe_weighteds: Vec<MaybeWeighted<T>>) -> Vec<WeightedT<T>> {
     let mut total_explicit_percentage = 0.0;
     let mut implicit_percentage_count = 0.0;
 
-    for wval in &wvals {
-        let WeightedValue { weight, value: _ } = wval;
+    for maybe_weighted in &maybe_weighteds {
+        let MaybeWeighted { weight, value: _ } = maybe_weighted;
 
         match weight {
             Some(weight) => total_explicit_percentage += weight,
@@ -109,26 +121,32 @@ fn get_gens_and_weightings(wvals: Vec<WeightedValue>) -> Vec<(f64, Generator)> {
 
     let implicit_weighting = (100.0 - total_explicit_percentage) / implicit_percentage_count;
 
-    wvals
+    maybe_weighteds
         .into_iter()
-        .map(move |wval| {
-            let WeightedValue { weight, value } = wval;
-
-            (weight.unwrap_or(implicit_weighting), get_generator_from_value(value))
-        })
+        .map(|MaybeWeighted { weight, value }|
+            WeightedT {
+                weight: weight.unwrap_or(implicit_weighting),
+                value,
+            }
+        )
         .collect()
 }
 
-fn make_weighted_alternation_gen(wvals: Vec<WeightedValue>) -> Generator {
-    let vals_and_weightings = get_gens_and_weightings(wvals);
+fn into_explicit_weightings<T>(vals: Vec<T>) -> Vec<WeightedT<T>>
+where MaybeWeighted<T>: From<T>
+{
+    let maybe_weighteds = vals.into_iter().map(MaybeWeighted::from).collect();
+    determine_implicit_weightings(maybe_weighteds)
+}
 
+fn make_weighted_alternation_gen(weighted_ts: Vec<WeightedT<Generator>>) -> Generator {
     Box::new(move |context| {
         let mut chosen_percentage = thread_rng().gen_range(0.0..=100.0);
 
-        let gen = vals_and_weightings
+        let gen = weighted_ts
             .iter()
-            .find_map(|(weighting, gen)| {
-                chosen_percentage -= weighting;
+            .find_map(|WeightedT { weight, value: gen }| {
+                chosen_percentage -= weight;
 
                 Option::Some(gen)
                     .filter(|_| chosen_percentage <= 0.0)
@@ -137,6 +155,15 @@ fn make_weighted_alternation_gen(wvals: Vec<WeightedValue>) -> Generator {
 
         gen(context)
     })
+}
+
+fn get_alternation_gen_from_weighted_values(weighted_values: Vec<WeightedValue>) -> Generator {
+    let weighted_values = into_explicit_weightings(weighted_values)
+        .into_iter()
+        .map(|WeightedT { weight, value }| WeightedT { weight, value: get_generator_from_value(value.value) })
+        .collect();
+
+    make_weighted_alternation_gen(weighted_values)
 }
 
 fn get_dependencies_from_values(values: &[&Value]) -> Vec<String> {
@@ -149,82 +176,173 @@ fn get_dependencies_from_values(values: &[&Value]) -> Vec<String> {
                 HigherOrderValue::Identifier(id) =>
                     vec![ id.clone() ],
 
-                HigherOrderValue::Join(values) =>
+                HigherOrderValue::Join(values) => 
                     get_dependencies_from_values(values.iter().collect::<Vec<_>>().as_slice()),
             }
         ).collect()
 }
 
+fn unstack_def_node(def_node: NestedDefNode) -> Vec<TerminalDefNode> {
+    match def_node {
+        DefNode::Match(children) => {
+            let children = match children {
+                MatchChildren::Exhaustive(children) => children,
+                MatchChildren::Wildcard { .. } => todo!("Implement unstacking for wildcard matchers"),
+            };
+
+            let (matchers_by_child, unstacked_grandchildren): (Vec<_>, Vec<_>) = children.into_iter()
+                .map(|node| (node.matchers, unstack_def_node(node.children)))
+                .unzip();
+            let grandchildren_by_depth = unstacked_grandchildren.into_iter().transpose();
+
+            grandchildren_by_depth.into_iter()
+                .map(|grandchildren_defnodes_at_depth| {
+                    let match_nodes: Vec<_> = grandchildren_defnodes_at_depth.into_iter()
+                        .zip(matchers_by_child.clone().into_iter())
+                        .map(|(children, matchers)| MatchNode::<TerminalAssignNode> { matchers, children })
+                        .collect();
+                    DefNode::Match(MatchChildren::Exhaustive(match_nodes))
+                })
+                .collect()
+        }
+        DefNode::Assign(children) => {
+
+            fn unpack_assign_nodes(children: Vec<NestedAssignNode>) -> Vec<TerminalDefNode> {
+
+                let (terminal_nodes, maybe_grandchildren_by_child): (Vec<TerminalAssignNode>, Vec<Option<Vec<NestedAssignNode>>>) = children.into_iter()
+                    .map(|node| (TerminalAssignNode { weight: node.weight, values: node.values }, node.children))
+                    .unzip();
+
+                let maybe_grandchildren_by_child: Option<Vec<_>> = maybe_grandchildren_by_child.into_iter().collect();
+
+                match maybe_grandchildren_by_child {
+                    Some(grandchildren_by_child) => {
+                        let grandchildren_defnodes_by_depth = grandchildren_by_child.into_iter()
+                            .map(|grandchildren| unpack_assign_nodes(grandchildren))
+                            .transpose();
+
+                        dbg!(&grandchildren_defnodes_by_depth);
+
+                        fn get_match_exprs_by_child(terminal_nodes: &Vec<TerminalAssignNode>) -> Vec<Vec<MatchExpr>> {
+                            terminal_nodes.iter()
+                                .map(|child| child.make_match_exprs())
+                                .collect()
+                        }
+                        
+                        let wrapped_grandchildren_defnodes_by_depth: Vec<_> = grandchildren_defnodes_by_depth.into_iter()
+                            .map(|grandchildren_defnodes_at_depth| {
+                                let match_nodes: Vec<_> = grandchildren_defnodes_at_depth.into_iter()
+                                    .zip(get_match_exprs_by_child(&terminal_nodes).into_iter())
+                                    .map(|(children, matchers)| MatchNode::<TerminalAssignNode> { matchers, children })
+                                    .collect();
+
+                                TerminalDefNode::Match(MatchChildren::Exhaustive(match_nodes))
+                            })
+                            .collect();
+
+
+                        once(TerminalDefNode::Assign(terminal_nodes))
+                            .chain(wrapped_grandchildren_defnodes_by_depth)
+                            .collect()
+                    }
+                    None =>
+                        vec![
+                            TerminalDefNode::Assign(terminal_nodes)
+                        ]
+                }
+            }
+
+            unpack_assign_nodes(children)
+        },
+    }
+}
+
+fn make_terminal_def_node_gen<'a>(match_ids: &Vec<&String>, def_node: TerminalDefNode, depth: usize) -> Generator {
+    match def_node {
+        DefNode::Assign(children) => {
+            let weighted_generators = into_explicit_weightings(children)
+                .into_iter()
+                .map(|WeightedT { weight, value }| {
+                    WeightedT { weight, value: get_alternation_gen_from_weighted_values(value.values) }
+                })
+                .collect::<Vec<_>>();
+
+            make_weighted_alternation_gen(weighted_generators)
+        }
+        DefNode::Match(children) => {
+            dbg!(&match_ids, &children);
+
+            let this_id = match_ids.get(depth)
+                .map(|id| (*id).clone())
+                .expect(&format!("DefNode::Match didn't have a paired id {:?}", children));
+
+            let children = match children {
+                MatchChildren::Exhaustive(children) => children,
+                MatchChildren::Wildcard { .. } => todo!("Implement evaluation for wildcard matchers"),
+            };
+
+            let child_generators: Vec<_> = children.into_iter()
+                .map(|child| (child.matchers, make_terminal_def_node_gen(match_ids, child.children, depth + 1)))
+                .collect();
+
+            Box::new(move |context| {
+                let match_value = context.get(this_id.as_str())
+                    .ok_or_else(|| MockagenError::from_eval_err(EvaluationError::MissingIdentifier(this_id.clone())))?;
+
+                child_generators.iter()
+                    .find(|(matchers, _)| matchers.iter().any(|matcher| matcher.is_match(match_value)))
+                    .map(|(_, gen)| gen(context))
+                    .unwrap_or_else(|| Err(MockagenError::from_eval_err(EvaluationError::NoMatchBranchForValue(match_value.clone()))))
+            })
+        }
+    }
+}
+
+
 pub fn make_definition_gens(definition: Definition) -> Vec<DefGen> {
     match definition {
-        Definition::NestedDefinition { using_ids, identifiers, def_set } => {
-            // make derived alternation generator
-            // use the identifiers from the `identifiers` vector
-            // you need to have an impl Into<_> for Matchers into OutValue or perhaps it's the other way around something like that.
-            // Of course it's an error if you don't succeed - so perhaps it's TryInto<_> that you should be implementing
-            todo!()
-        }
+        Definition::NestedDefinition { using_ids, identifiers, nested_def_set } => {
+            let bind_ids = identifiers.clone();
+            let using_ids = using_ids.unwrap_or_else(|| vec![]);
 
+            let ref_ids_by_assigned_id: Vec<Vec<_>> = (0..identifiers.len())
+                .map(|length|
+                    using_ids.iter()
+                        .chain(identifiers.iter().take(length))
+                        .collect())
+                .collect();
+
+            let unstacked_def_nodes = unstack_def_node(nested_def_set);
+
+            dbg!(ref_ids_by_assigned_id.len(), unstacked_def_nodes.len(), bind_ids.len());
+
+            ref_ids_by_assigned_id.into_iter()
+                .zip(unstacked_def_nodes)
+                .zip(bind_ids)
+                .map(|((ref_ids, def_node), id)| {
+                    dbg!(&ref_ids, &def_node, &id);
+                    DefGen {
+                        id,
+                        gen: make_terminal_def_node_gen(&ref_ids, def_node, 0),
+                        dependencies: ref_ids.into_iter().map(|s| s.to_string()).collect(),
+                    }
+                })
+                .collect()
+        }
         Definition::SingleDefinition { identifier, values: weighted_values } => {
             let values: Vec<_> = weighted_values.iter()
                 .map(|wval| &wval.value)
                 .collect();
 
+            let dependencies = get_dependencies_from_values(&values);
+
             vec![
                 DefGen {
                     id: identifier,
-                    dependencies: get_dependencies_from_values(&values),
-                    gen: make_weighted_alternation_gen(weighted_values),
+                    dependencies,
+                    gen: get_alternation_gen_from_weighted_values(weighted_values),
                 }
             ]
         }
-    }
-}
-
-fn get_debug_value() -> Definition {
-    Definition::NestedDefinition {
-        using_ids: Some(vec![ "country".to_string() ]),
-        identifiers: vec![ "region".to_string() ],
-        def_set: DefSet::MatchWithWildCard {
-            nodes: vec![
-                MatchNode {
-                    matchers: vec![ MatchExpr::Literal("United Kingdom".to_string()), ],
-                    children: DefSet::Assign {
-                        nodes: vec![
-                            AssignNode {
-                                weight: None,
-                                values: vec![
-                                    WeightedValue {
-                                        weight: Some(17.0),
-                                        value: Value::PrimitiveValue(PrimitiveValue::Literal("London".to_string())),
-                                    },
-                                    WeightedValue {
-                                        weight: Some(10.0),
-                                        value: Value::PrimitiveValue(PrimitiveValue::Literal("Manchester".to_string())),
-                                    },
-                                ],
-                                children: None,
-                            },
-                        ],
-                    },
-                },
-            ],
-            wildcard_node: Box::new(WildcardNode {
-                children: DefSet::Assign {
-                    nodes: vec![
-                        AssignNode {
-                            weight: None,
-                            values: vec![
-                                WeightedValue {
-                                    weight: None,
-                                    value: Value::PrimitiveValue(PrimitiveValue::Literal("Unknown".to_string())),
-                                },
-                            ],
-                            children: None,
-                        },
-                    ],
-                },
-            }),
-        },
     }
 }

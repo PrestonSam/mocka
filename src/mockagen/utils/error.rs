@@ -1,24 +1,24 @@
-use crate::mockagen::{model::{AnnotatedPackingError, Error, PackingError, Providence, SyntaxChildren, SyntaxTree}, parser::Rule};
+use crate::mockagen::{model::{PackingError, PackingErrorVariant, Providence, SyntaxChildren, SyntaxTree}, parser::Rule};
 
 pub fn to_debug<T>(value: T) -> String where T: core::fmt::Debug {
     format!("{:?}", value)
 }
 
-pub fn make_error_from_providence<'a>(providence: Providence<'a>, error: PackingError) -> Error {
-    Error::from(AnnotatedPackingError { error, providence: to_debug(providence) })
+pub fn make_error_from_providence(providence: Providence, error: PackingErrorVariant) -> PackingError {
+    PackingError::new(error).with_providence(providence)
 }
 
-pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, Error> {
+pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, PackingError> {
     Err(make_error_from_providence(
         tree.token.providence.clone(),
-        PackingError::SyntaxUnhandledTreeShape(to_debug(tree)))
+        PackingErrorVariant::SyntaxUnhandledTreeShape(to_debug(tree)))
     )
 }
 
-pub fn make_no_array_match_found_error<T, const N: usize>(nodes: [Option<(Rule, Providence, Option<SyntaxChildren>)>; N]) -> Result<T, Error> {
+pub fn make_no_array_match_found_error<T, const N: usize>(nodes: [Option<(Rule, Providence, Option<SyntaxChildren>)>; N]) -> Result<T, PackingError> {
     let (providence, reformatted_vec) = reformat_rule_matcher_vec(nodes.to_vec());
 
-    Err(make_error_from_providence(providence, PackingError::SyntaxNodeCountMismatch(reformatted_vec)))
+    Err(make_error_from_providence(providence, PackingErrorVariant::SyntaxNodeCountMismatch(reformatted_vec)))
 }
 
 // Abandon all hope all ye who traverse this truly sinful code

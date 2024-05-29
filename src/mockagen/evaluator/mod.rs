@@ -9,7 +9,7 @@ pub fn evaluate_mockagen(statements: Vec<Statement>) -> Vec<DefGen> {
     statements.into_iter()
         .flat_map(|statement| {
             match statement {
-                Statement::Include(includes) => todo!(),
+                Statement::Include(_) => todo!("Logic for loading files"),
                 Statement::Definition(definition) => {
                     make_definition_gens(definition)
                 }

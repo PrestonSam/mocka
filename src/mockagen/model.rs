@@ -3,14 +3,38 @@ use std::fmt::Debug;
 use chrono::NaiveDate;
 use pest::{iterators::Pair, Span};
 
-use super::{evaluator::model::EvaluationError, parser::Rule};
+use super::{evaluator::model::{EvaluationError, OutValue}, parser::Rule};
 
 
 // TODO expand the supported expressions in future
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MatchExpr {
     Literal(String),
     Any,
+}
+
+impl From<&Value> for MatchExpr {
+    fn from(value: &Value) -> Self {
+        match value {
+            Value::PrimitiveValue(PrimitiveValue::Literal(literal)) => Self::Literal(literal.clone()),
+            _ => todo!("Implement support for other Values / MatchExprs")
+        }
+    }
+}
+
+impl MatchExpr {
+    pub fn is_match(&self, value: &OutValue) -> bool {
+        match (self, value) {
+            (MatchExpr::Any, _) =>
+                true,
+
+            (MatchExpr::Literal(match_value), OutValue::String(found_value)) =>
+                *match_value == *found_value, // TODO is this the idiomatic way to do this?
+
+            _ =>
+                false
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -43,36 +67,58 @@ pub struct WeightedValue {
 }
 
 #[derive(Debug)]
-pub struct MatchNode {
+pub struct MatchNode<T> {
     pub matchers: Vec<MatchExpr>,
-    pub children: DefSet,
+    pub children: DefNode<T>,
 }
 
 #[derive(Debug)]
-pub struct WildcardNode {
-    pub children: DefSet,
+pub struct WildcardNode<T> {
+    pub children: DefNode<T>,
 }
 
 #[derive(Debug)]
-pub struct AssignNode {
+pub struct NestedAssignNode {
     pub weight: Option<Weight>,
     pub values: Vec<WeightedValue>,
-    pub children: Option<Vec<AssignNode>>
+    pub children: Option<Vec<NestedAssignNode>>
 }
 
 #[derive(Debug)]
-pub enum DefSet {
-    Match {
-        nodes: Vec<MatchNode>
-    },
-    MatchWithWildCard {
-        nodes: Vec<MatchNode>,
-        wildcard_node: Box<WildcardNode>,
-    },
-    Assign {
-        nodes: Vec<AssignNode>
-    },
+pub struct TerminalAssignNode {
+    pub weight: Option<Weight>,
+    pub values: Vec<WeightedValue>,
 }
+
+impl TerminalAssignNode {
+    pub fn make_match_exprs(&self) -> Vec<MatchExpr> {
+        self.values
+            .iter()
+            .map(|wv| MatchExpr::from(&wv.value))
+            .collect()
+    }
+}
+
+
+#[derive(Debug)]
+pub enum MatchChildren<T> {
+    Exhaustive(Vec<MatchNode<T>>),
+    Wildcard { children: Vec<MatchNode<T>>, wildcard_child: Box<WildcardNode<T>> },
+}
+
+
+/// Represents a fork in a given definition tree.
+/// Each child of the fork must be of the same type - either Match, MatchWithWildcard or Assign
+#[derive(Debug)]
+pub enum DefNode<T> { // TODO Should I restrict what T can be, here?
+    Match(MatchChildren<T>),
+    Assign(Vec<T>),
+}
+
+pub type NestedDefNode = DefNode<NestedAssignNode>;
+
+pub type TerminalDefNode = DefNode<TerminalAssignNode>;
+
 
 #[derive(Debug)]
 pub enum Definition {
@@ -83,7 +129,7 @@ pub enum Definition {
     NestedDefinition {
         using_ids: Option<Vec<String>>,
         identifiers: Vec<String>,
-        def_set: DefSet,
+        nested_def_set: NestedDefNode,
     },
 }
 
@@ -116,61 +162,117 @@ impl <'a>core::fmt::Debug for Providence<'a> {
 }
 
 #[derive(Debug)]
-pub enum PackingError { // At some point I'll have to break this out into sub-errors
+pub enum PackingErrorVariant { // At some point I'll have to break this out into sub-errors
     SyntaxUnhandledTreeShape(String),
     SyntaxChildrenArrayCastError(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     SyntaxNodeCountMismatch(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     ParseIntError(core::num::ParseIntError),
-    ParseRealError(core::num::ParseFloatError),
+    ParseFloatError(core::num::ParseFloatError),
     DateParseError(chrono::ParseError),
 }
 
-impl From<core::num::ParseIntError> for PackingError {
+#[derive(Debug)]
+enum PackingErrorContext {
+    Providence(String),
+    Rule(Rule),
+}
+
+#[derive(Debug) ]
+pub struct PackingError {
+    error: PackingErrorVariant,
+    context: Vec<PackingErrorContext>,
+}
+
+impl PackingError {
+    pub fn new(error: PackingErrorVariant) -> Self {
+        PackingError {
+            error,
+            context: vec![],
+        }
+    }
+
+    pub fn with_providence(mut self, providence: Providence<'_>) -> Self {
+        self.context.push(PackingErrorContext::Providence(format!("{:?}", providence)));
+        self
+    }
+
+    pub fn with_rule(mut self, rule: Rule) -> Self {
+        self.context.push(PackingErrorContext::Rule(rule));
+        self
+    }
+}
+
+impl From<core::num::ParseIntError> for PackingErrorVariant {
     fn from(value: core::num::ParseIntError) -> Self {
-        PackingError::ParseIntError(value)
+        PackingErrorVariant::ParseIntError(value)
     }
 }
 
-impl From<core::num::ParseFloatError> for PackingError {
+impl From<core::num::ParseFloatError> for PackingErrorVariant {
     fn from(value: core::num::ParseFloatError) -> Self {
-        PackingError::ParseRealError(value)
+        PackingErrorVariant::ParseFloatError(value)
     }
 }
 
-impl From<chrono::ParseError> for PackingError {
+impl From<chrono::ParseError> for PackingErrorVariant {
     fn from(value: chrono::ParseError) -> Self {
-        PackingError::DateParseError(value)
+        PackingErrorVariant::DateParseError(value)
     }
 }
 
 #[derive(Debug)]
 pub struct AnnotatedPackingError {
-    pub error: PackingError,
+    pub error: PackingErrorVariant,
     pub providence: String,
 }
 
 #[derive(Debug)]
-pub enum Error { // TODO see about removing the lifetime specifier as it's more trouble than it's worth
-    PackingError(AnnotatedPackingError),
-    ParsingError(pest::error::Error<Rule>),
+pub enum MockagenErrorVariant {
+    PackingError(PackingError),
+    ParsingError(Box<pest::error::Error<Rule>>),
     EvaluationError(EvaluationError),
 }
 
-impl <'a>From<AnnotatedPackingError> for Error {
-    fn from(value: AnnotatedPackingError) -> Self {
-        Error::PackingError(value)
+#[derive(Debug)]
+pub struct MockagenError { // TODO do I need this?
+    error: MockagenErrorVariant,
+}
+
+impl MockagenError {
+    pub fn from_parsing_err(error: pest::error::Error<Rule>) -> Self {
+        MockagenError {
+            error: MockagenErrorVariant::ParsingError(Box::from(error))
+        }
+    }
+
+    pub fn from_packing_err(error: PackingError) -> Self {
+        MockagenError {
+            error: MockagenErrorVariant::PackingError(error)
+        }
+    }
+
+    pub fn from_eval_err(error: EvaluationError) -> Self {
+        MockagenError {
+            error: MockagenErrorVariant::EvaluationError(error)
+        }
     }
 }
 
-impl From<pest::error::Error<Rule>> for Error {
+impl From<PackingError> for MockagenErrorVariant {
+    fn from(value: PackingError) -> Self {
+        MockagenErrorVariant::PackingError(value)
+    }
+}
+
+impl From<pest::error::Error<Rule>> for MockagenErrorVariant {
     fn from(value: pest::error::Error<Rule>) -> Self {
-        Error::ParsingError(value)
+        MockagenErrorVariant::ParsingError(Box::from(value))
     }
 }
 
-impl From<EvaluationError> for Error {
+impl From<EvaluationError> for MockagenErrorVariant {
     fn from(value: EvaluationError) -> Self {
-        Error::EvaluationError(value)
+        MockagenErrorVariant::EvaluationError(value)
     }
 }
 
@@ -208,14 +310,19 @@ impl <'a>SyntaxChildren<'a> {
 impl <'a>Debug for SyntaxChildren<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyntaxChildren::One(val) => write!(f, "[ {:?} ]", val),
+            SyntaxChildren::One(val) =>
+                f.debug_list()
+                    .entries(vec![ val ])
+                    .finish(),
+
             SyntaxChildren::Many(vals) => {
                 let rules = vals
                     .iter()
-                    .map(|child| child.token.rule)
-                    .collect::<Vec<_>>();
+                    .map(|child| child.token.rule);
 
-                write!(f, "[ {:#?} ]", rules)
+                f.debug_list()
+                    .entries(rules)
+                    .finish()
             }
         }
     }
@@ -262,11 +369,15 @@ impl <'a>Debug for SyntaxTree<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SyntaxTree { token, children: None } =>
-                write!(f, "TreeLeaf {{ {:?} }}", token),
+                f.debug_struct("TreeLeaf")
+                    .field("token", token)
+                    .finish(),
 
-            SyntaxTree { token, children: Some(children) } => {
-                write!(f, "TreeNode {{ {:?}, {:#?} }}", token, children)
-            }
+            SyntaxTree { token, children: Some(children) } =>
+                f.debug_struct("TreeNode")
+                    .field("token", token)
+                    .field("children", children)
+                    .finish()
         }
     }
 }

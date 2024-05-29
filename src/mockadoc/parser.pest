@@ -1,0 +1,42 @@
+
+body = _{ properties ~ import_statement ~ documents }
+
+properties = _{ SOI ~ "---" ~ !"---"+ ~ "---" }
+
+import_statement = { "IMPORT" ~ path ~ ("," ~ path)* }
+
+path = { "\"" ~ !"\""+ ~ "\"" }
+
+documents = { document ~ (NEWLINE+ ~ document)* }
+
+document = { title ~ NEWLINE+ ~ table }
+
+title = { "###" ~ TEXT }
+
+// It'd be nice if I could use the stack to enforce that the table isn't jagged
+table = { heading ~ (NEWLINE ~ row)+ }
+
+heading = { column_names ~ NEWLINE ~ table_divider }
+
+column_names = { ("|" ~ (TEXT | METADATA_TAG))+ ~ "|" }
+
+table_divider = { ("|" ~ column_divider)+ ~ "|" }
+
+column_divider = @{ ":"? ~ "-"+ ~ ":"? }
+
+row = { ("|" ~ (METADATA_PROPERTY | mockagen_identifier | TEXT)) ~ "|" }
+
+METADATA_PROPERTY = { "PRIMARY TIMESTAMP" | "PERSONAL" }
+
+mockagen_identifier = @{ "`" ~ MOCKAGEN_IDENTIFIER ~ "`" }
+
+TEXT =
+   @{ (ASCII_ALPHA ~ (ASCII_ALPHA | " ")* ~ ASCII_ALPHA)
+    | ASCII_ALPHA // Edgecase for where text is just a single character
+    }
+
+MOCKAGEN_IDENTIFIER = @{ (ASCII_ALPHA_LOWER | "-")+ }
+
+METADATA_TAG = @{ ("*" | "_") ~ "METADATA" ~ ("*" | "_") }
+
+WHITESPACE = { " " }

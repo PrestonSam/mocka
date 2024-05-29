@@ -155,7 +155,7 @@ TYPE_KEYWORDS =
 
 RESERVED_WORDS = { SYNTAX_KEYWORDS | TYPE_KEYWORDS }
 
-IDENTIFIER = @{ &!RESERVED_WORDS ~ (ASCII_ALPHA | "-")+ }
+IDENTIFIER = @{ !RESERVED_WORDS ~ (ASCII_ALPHA_LOWER | "-")+ }
 
 STRING_LITERAL = ${ "\"" ~ string_content ~ "\"" }
 string_content = @{ string_char* }

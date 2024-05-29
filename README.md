@@ -1,4 +1,4 @@
-# The Mocka Programming Language
+# The Mocka Programming Languages
 
 ## What is Mocka?
 
@@ -6,7 +6,7 @@ Mocka is a pair of programming languages that can be used to generate artificial
 
 The target audience of these languages is users that need to generate data locally, using complex and interrelated rules, but lack the experience in programming necessary for data generation libraries such as [FakerJS](https://fakerjs.dev/).
 
-In a commercial environment, it may be dubious to generate data using an online tool such as [Fakery](https://fakery.dev/), as properly configuring such a tool may involve divulging protected information in order to generate convincing mock data.
+In a commercial environment, it may be dubious to generate data using an online tool such as [Fakery](https://fakery.dev/), as one may be required to divulge protected information in order to generate convincing mock data.
 
 
 ## How to use Mocka
@@ -18,14 +18,15 @@ Used for describing the columns for a prospective document that could be generat
 
 
 #### Example code
-```
-EVENT "Transaction" TYPEDEF "event-types.mkg"
- - "Timestamp" UnixTimestamp string unix-timestamp AS PRIMARY TIMESTAMP
- - "Name" ActorName string full-name 
- - "Age" ActorAge long age AS PERSONAL
- - "Country" ActorCountry long country AS PERSONAL
- - "Region" ActorRegion string region AS PERSONAL
+```md
+IMPORT "event-types.mkg"
 
+### Transaction
+
+| Template name | Internal name | DSQL Type | _GENERATOR_      | _METADATA_        |
+| ------------- | ------------- | --------- | ---------------- | ----------------- |
+| Timestamp     | UnixTimestamp | string    | `unix-timestamp` | PRIMARY TIMESTAMP |
+| Name          | ActorName     | string    | `full-name`      | PERSONAL          |
 ```
 
 ### Mockagen
@@ -92,12 +93,12 @@ DEF full-name = join surname "," first-name
 ### Mockagen
 - [x] Parser (inc. tokeniser)
 - [x] AST builder
-- [ ] Evaluation
-    - [ ] Design interface
-    - [ ] Implement evaluator
+- [x] Evaluation
+    - [x] Design interface
+    - [x] Implement evaluator
 
 ### Mockadoc
-- [ ] Parser (inc. tokeniser)
+- [x] Parser (inc. tokeniser)
 - [ ] AST builder
 - [ ] Evaluation
 
