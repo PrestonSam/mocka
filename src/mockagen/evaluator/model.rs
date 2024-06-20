@@ -5,7 +5,8 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Serialize, Serializer};
 
-use crate::mockagen::model::{MockagenError, NestedAssignNode, TerminalAssignNode, WeightedValue};
+use crate::mockagen::model::MockagenError;
+use crate::mockagen::packer::model::{NestedAssignNode, TerminalAssignNode, WeightedValue};
 
 #[derive(Debug)]
 pub enum EvaluationError {

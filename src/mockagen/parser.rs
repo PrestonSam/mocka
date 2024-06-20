@@ -1,6 +1,8 @@
 use pest_derive::Parser;
 use pest::{iterators::Pairs, Parser};
 
+use crate::utils::error::LanguageError;
+
 use super::model::MockagenError;
 
 #[derive(Parser)]

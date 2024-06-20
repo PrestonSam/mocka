@@ -6,10 +6,10 @@ use rand::{
     thread_rng, Rng,
 };
 
-use crate::mockagen::{
+use crate::{mockagen::{
     evaluator::model::EvaluationError,
-    model::{DefNode, Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode, MockagenError, NestedAssignNode, NestedDefNode, PrimitiveValue, TerminalAssignNode, TerminalDefNode, Value, WeightedValue}, utils::iterator::Transpose,
-};
+    packer::model::{DefNode, Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode, NestedAssignNode, NestedDefNode, PrimitiveValue, TerminalAssignNode, TerminalDefNode, Value, WeightedValue}, MockagenError,
+}, utils::{iterator::Transpose, error::LanguageError}};
 
 use super::model::{DefGen, Generator, MaybeWeighted, OutValue, WeightedT};
 

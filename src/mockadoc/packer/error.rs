@@ -1,6 +1,7 @@
-use std::fmt::Debug;
+use crate::{mockadoc::parser::Rule, utils::packing::Providence};
 
-use crate::{mockagen::{packer::model::{PackingError, PackingErrorVariant, SyntaxChildren, SyntaxTree}, parser::Rule}, utils::packing::Providence};
+use super::model::{PackingError, PackingErrorVariant, SyntaxChildren, SyntaxTree};
+
 
 pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, PackingError> {
     let error = PackingError::new(PackingErrorVariant::SyntaxUnhandledTreeShape(format!("{tree:?}")))

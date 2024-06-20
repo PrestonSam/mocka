@@ -1,22 +1,28 @@
 use pest::iterators::Pairs;
 
-use super::{
-    model::{Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode, MockagenError, NestedAssignNode, NestedDefNode, PackingError, PackingErrorVariant, PrimitiveValue, Providence, Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode}, parser::Rule, utils::{
-        error::{make_no_array_match_found_error, make_tree_shape_error},
-        unpackers::{unpack_range, vec_into_array_varied_length}
-    }
+use crate::mockagen::MockagenError;
+use crate::utils::error::LanguageError;
+use crate::utils::packing::{Providence, SkipRules};
+
+use super::model::{
+    Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode,
+    NestedAssignNode, NestedDefNode, PackingError, PackingErrorVariant, PrimitiveValue,
+    Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode
 };
 
+use super::super::{
+    parser::Rule,
+    utils::{
+        error::{make_no_array_match_found_error, make_tree_shape_error},
+        unpackers::{unpack_range, vec_into_array_varied_length, PackingResult}
+    },
+};
 
-// TODO maybe move this someplace else
-trait PackingResult {
-    fn with_rule(self, rule: Rule) -> Self;
-}
+impl SkipRules for Rule {
+    type Rule = Rule;
 
-impl<T> PackingResult for Result<T, PackingError> {
-    fn with_rule(self, rule: Rule) -> Self
-    {
-        self.map_err(|err| err.with_rule(rule))
+    fn get_skip_rules(&self) -> Vec<Rule> {
+        vec![ Rule::TAB ]
     }
 }
 
@@ -24,7 +30,7 @@ impl<T> PackingResult for Result<T, PackingError> {
 fn unpack_string_literal(tree: SyntaxTree) -> Result<String, PackingError> {
     match (tree.token.rule, tree.children) {
         (Rule::STRING_LITERAL, Some(SyntaxChildren::One(string_content))) =>
-            Ok(string_content.token.providence.src.to_string()),
+            Ok(string_content.as_string()),
 
         (rule, children) =>
             make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
@@ -64,7 +70,7 @@ fn parse_primitive_value(tree: SyntaxTree) -> Result<PrimitiveValue, PackingErro
 fn parse_higher_order_value(tree: SyntaxTree) -> Result<HigherOrderValue, PackingError> {
     match (tree.token.rule, tree.children) {
         (Rule::identifier_value, Some(SyntaxChildren::One(identifier))) =>
-            Ok(HigherOrderValue::Identifier(identifier.token.providence.src.to_string())),
+            Ok(HigherOrderValue::Identifier(identifier.as_string())),
 
         (Rule::join_value, Some(children)) =>
             Ok(HigherOrderValue::Join(children.get_values_iter()
@@ -230,7 +236,7 @@ fn parse_values(tree: SyntaxTree) -> Result<Vec<WeightedValue>, PackingError> {
 }
 
 fn parse_single_definition(nodes: Vec<SyntaxTree>) -> Result<Definition, PackingError> {
-    match vec_into_array_varied_length(nodes)? {
+    match vec_into_array_varied_length(nodes).with_rule(Rule::single_definition)? {
         [ Some((Rule::IDENTIFIER, Providence { src: id, .. }, None))
         , Some(weighted_values)
         ] => {
@@ -390,7 +396,7 @@ fn parse_nested_clauses(tree: SyntaxTree) -> Result<NestedDefNode, PackingError>
 
 
 fn parse_nested_definition(tree: Vec<SyntaxTree>) -> Result<Definition, PackingError> {
-    let (maybe_using_ids, assign_ids, nested_clauses) = match vec_into_array_varied_length(tree)? {
+    let (maybe_using_ids, assign_ids, nested_clauses) = match vec_into_array_varied_length(tree).with_rule(Rule::nested_definition)? {
         [ Some((Rule::using_ids, _, Some(using_ids)))
         , Some((Rule::assign_ids, _, Some(assign_ids)))
         , Some((Rule::nested_clauses, _, Some(SyntaxChildren::One(nested_clauses))))
@@ -427,10 +433,10 @@ pub fn pack_mockagen(pairs: Pairs<'_, Rule>) -> Result<Vec<Statement>, MockagenE
                     ),
                 
                 (Rule::single_definition, Some(children)) =>
-                    Some(parse_single_definition(children.get_values()).with_rule(Rule::single_definition).map(Statement::Definition)),
+                    Some(parse_single_definition(children.get_values()).map(Statement::Definition)),
 
                 (Rule::nested_definition, Some(children)) =>
-                    Some(parse_nested_definition(children.get_values()).with_rule(Rule::nested_definition).map(Statement::Definition)),
+                    Some(parse_nested_definition(children.get_values()).map(Statement::Definition)),
                 
                 (Rule::EOI, None) =>
                     None,
@@ -440,5 +446,5 @@ pub fn pack_mockagen(pairs: Pairs<'_, Rule>) -> Result<Vec<Statement>, MockagenE
             }
         })
         .collect::<Result<_, _>>()
-        .map_err(|err| MockagenError::from_packing_err(err))
+        .map_err(MockagenError::from_packing_err)
 }

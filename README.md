@@ -99,6 +99,6 @@ DEF full-name = join surname "," first-name
 
 ### Mockadoc
 - [x] Parser (inc. tokeniser)
-- [ ] AST builder
+- [x] AST builder
 - [ ] Evaluation
 

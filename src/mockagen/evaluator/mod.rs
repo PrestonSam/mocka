@@ -1,6 +1,6 @@
 use self::{generators::make_definition_gens, model::DefGen};
 
-use super::model::Statement;
+use super::packer::model::Statement;
 
 mod generators;
 pub mod model;
