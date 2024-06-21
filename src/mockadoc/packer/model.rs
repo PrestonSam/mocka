@@ -24,28 +24,18 @@ pub enum CellData {
     Text(String),
 }
 
-#[derive(Debug)]
-pub enum ColumnData {
-    MockagenId(Vec<String>),
-    Text(Vec<String>),
-}
-
 #[derive(Debug, Clone)]
 pub enum ColumnHeading {
     MetadataTag,
+    GeneratorTag,
     Text(String),
 }
 
 #[derive(Debug)]
-pub enum ColumnValues {
+pub enum Column {
     Metadata(Vec<MetadataProperties>),
-    Data(ColumnData),
-}
-
-#[derive(Debug)]
-pub struct Column {
-    pub title: ColumnHeading,
-    pub data: ColumnValues
+    Generators(Vec<String>),
+    Text { title: String, data: Vec<String> },
 }
 
 #[derive(Debug)]

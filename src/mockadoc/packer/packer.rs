@@ -1,8 +1,8 @@
 use pest::iterators::Pairs;
 
-use crate::{mockadoc::{packer::model::{ColumnData, MetadataProperty}, parser::Rule, MockadocError}, utils::{error::LanguageError, iterator::{Transpose, Group}}};
+use crate::{mockadoc::{packer::model::MetadataProperty, parser::Rule, MockadocError}, utils::{error::LanguageError, iterator::Transpose}};
 
-use super::{error::{make_no_array_match_found_error, make_tree_shape_error}, model::{Block, CellData, Column, ColumnHeading, ColumnValues, Document, ImportStatement, MetadataProperties, PackingError, PackingErrorVariant, PackingResult, SyntaxChildren, SyntaxToken, SyntaxTree}, utils::{vec_first_and_rest, vec_into_array_varied_length, FirstAndRest}};
+use super::{error::{make_no_array_match_found_error, make_tree_shape_error}, model::{Block, CellData, Column, ColumnHeading, Document, ImportStatement, MetadataProperties, PackingError, PackingErrorVariant, PackingResult, SyntaxChildren, SyntaxToken, SyntaxTree}, utils::{vec_first_and_rest, vec_into_array_varied_length, FirstAndRest}};
 
 fn parse_title(trees: Vec<SyntaxTree>) -> Result<String, PackingError> {
     match vec_into_array_varied_length(trees)? {
@@ -25,6 +25,9 @@ fn parse_column_names(tree: SyntaxTree) -> Result<Vec<ColumnHeading>, PackingErr
                     
                     (Rule::METADATA_TAG, _, _) =>
                         Ok(ColumnHeading::MetadataTag),
+                    
+                    (Rule::GENERATOR_TAG, _, _) =>
+                        Ok(ColumnHeading::GeneratorTag),
 
                     (rule, providence, children) =>
                         make_tree_shape_error(SyntaxTree::from((rule, providence, children))),
@@ -105,10 +108,10 @@ fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellD
     column_headings.into_iter()
         .zip(data_columns)
         .map(|(heading, column)| {
-            match heading {
+            let column_numbered = column.into_iter().enumerate();
+            match heading { // TODO clean
                 ColumnHeading::MetadataTag => {
-                    let tags_by_row = column.into_iter()
-                        .enumerate()
+                    let tags_by_row = column_numbered
                         .map(|(row, cell)|
                             match cell {
                                 CellData::MetadataProperties(props) =>
@@ -119,47 +122,36 @@ fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellD
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    Ok(Column { title: ColumnHeading::MetadataTag, data: ColumnValues::Metadata(tags_by_row) })
+                    Ok(Column::Metadata(tags_by_row))
                 }
-                ColumnHeading::Text(text) => {
-                    #[derive(PartialEq, Eq, Hash, Copy, Clone)]
-                    enum CellType {
-                        MockagenId = 0,
-                        Text = 1,
-                    }
-
-                    let groups = column.into_iter()
-                        .map(|cell|
+                ColumnHeading::GeneratorTag => {
+                    let tags_by_row = column_numbered
+                        .map(|(row, cell)|
                             match cell {
-                                CellData::MockagenId(id) => (CellType::MockagenId, id),
-                                CellData::Text(text) => (CellType::Text, text),
-                                _ =>
-                                    panic!("TODO user error to say you've got metadata in a data column")
-                            })
-                        .group();
+                                CellData::MockagenId(props) =>
+                                    Ok(props),
 
-                    let mut iter = groups.into_iter();
-
-                    match iter.next() {
-                        Some((cell_type, group)) => 
-                            match iter.next() {
-                                None => {
-                                    let values = match cell_type {
-                                        CellType::MockagenId =>
-                                            ColumnValues::Data(ColumnData::MockagenId(group)),
-
-                                        CellType::Text =>
-                                            ColumnValues::Data(ColumnData::Text(group)),
-                                    };
-
-                                    Ok(Column { title: ColumnHeading::Text(text), data: values })
-                                }
-                                Some(_) => panic!("TODO compiler error to complain that there's mixed types. Use the values in the iter")
+                            _ =>
+                                Err(PackingErrorVariant::InconsistentColumnTypes { heading: heading.clone(), cell, row })
                             }
+                        )
+                        .collect::<Result<Vec<_>, _>>()?;
 
-                        None =>
-                            Err(PackingErrorVariant::TableHasNoRows { column_heading: text })
-                    }
+                    Ok(Column::Generators(tags_by_row))
+                }
+                ColumnHeading::Text(heading_text) => {
+                    let tags_by_row = column_numbered
+                        .map(|(row, cell)|
+                            match cell {
+                                CellData::Text(props) =>
+                                    Ok(props),
+
+                            _ =>
+                                Err(PackingErrorVariant::InconsistentColumnTypes { heading: ColumnHeading::Text(heading_text.clone()), cell, row })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    Ok(Column::Text { title: heading_text, data: tags_by_row })
                 }
             }
         })
@@ -231,7 +223,11 @@ fn parse_documents(trees: Vec<SyntaxTree>) -> Result<Vec<Document>, PackingError
 }
 
 fn parse_import_statement(trees: Vec<SyntaxTree>) -> ImportStatement {
-    ImportStatement(trees.into_iter().map(|path| path.as_string()).collect())
+    let imports = trees.into_iter()
+        .map(|path| path.as_string())
+        .collect();
+
+    ImportStatement(imports)
 }
 
 pub fn pack_mockadoc(pairs: Pairs<'_, Rule>) -> Result<Vec<Block>, MockadocError> {
@@ -241,8 +237,13 @@ pub fn pack_mockadoc(pairs: Pairs<'_, Rule>) -> Result<Vec<Block>, MockadocError
                 (Rule::import_statement, Some(children)) =>
                     Some(Ok(Block::ImportStatement(parse_import_statement(children.get_values())))),
 
-                (Rule::documents, Some(children)) =>
-                    Some(parse_documents(children.get_values()).with_rule(Rule::documents).map(Block::Documents)),
+                (Rule::documents, Some(children)) => {
+                    let documents = parse_documents(children.get_values())
+                        .with_rule(Rule::documents)
+                        .map(Block::Documents);
+
+                    Some(documents)
+                }
 
                 (Rule::EOI, None) =>
                     None,

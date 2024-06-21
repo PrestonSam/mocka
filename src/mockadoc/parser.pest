@@ -17,7 +17,7 @@ table = { heading ~ (NEWLINE ~ row)+ }
 
 heading = { column_names ~ NEWLINE ~ table_divider }
 
-column_names = { ("|" ~ (TEXT | METADATA_TAG))+ ~ "|" }
+column_names = { ("|" ~ (TEXT | METADATA_TAG | GENERATOR_TAG))+ ~ "|" }
 
 table_divider = _{ ("|" ~ column_divider)+ ~ "|" }
 
@@ -41,5 +41,8 @@ TEXT = @{ ASCII_ALPHA ~ (ASCII_ALPHA | " " | "_")* ~ &("|" | NEWLINE) }
 
 MOCKAGEN_IDENTIFIER = @{ (ASCII_ALPHA_LOWER | "-")+ }
 
-METADATA_TAG = @{ ("*" | "_") ~ "METADATA" ~ ("*" | "_") }
+GENERATOR_TAG = ${ ITALICS_MARKER ~ "GENERATOR" ~ ITALICS_MARKER }
 
+METADATA_TAG = @{ ITALICS_MARKER ~ "METADATA" ~ ITALICS_MARKER }
+
+ITALICS_MARKER = _{ "*" | "_" }
