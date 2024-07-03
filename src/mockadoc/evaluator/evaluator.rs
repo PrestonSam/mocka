@@ -1,37 +1,65 @@
-use crate::mockadoc::{packer::model::{Block, Column, Document}, MockadocError};
+use crate::{
+    mockadoc::{
+        packer::model::{Column, Document, ImportStatement, MockadocFile},
+        MockadocError,
+    },
+    mockagen::{run_mockagen, ColumnGenerator, GeneratorSet},
+    utils::error::LanguageError,
+};
 
-fn evaluate_column(column: Column) -> Result<(), MockadocError> {
-    let _something = match column {
-        Column::Generators(generators) => todo!(),
-        Column::Metadata(metadatas) => todo!(),
-        Column::Text { title, data } => todo!(),
-    };
+use super::model::{EvaluationError, OutDocument};
 
-    Ok(())
+fn evaluate_column(column: Column, generators: &GeneratorSet) -> Result<ColumnGenerator, EvaluationError> {
+    match column {
+        Column::Generators(gen_ids) =>
+            generators
+                .make_column_generator(gen_ids)
+                .map_err(EvaluationError::from),
+
+        Column::Metadata(metadatas) =>
+            todo!("not quite sure how to do this yet"),
+
+        Column::Text { title, data } => // This shouldn't be part of the data generation
+            todo!(),
+    }
 }
 
-fn evaluate_document(document: Document) -> Result<(), MockadocError> {
-    let _something = document.columns.into_iter()
-        .map(evaluate_column)
-        .collect::<Vec<_>>();
+fn evaluate_document(document: Document, generators: &GeneratorSet) -> Result<OutDocument, EvaluationError> {
+    let rows = document.columns
+        .into_iter()
+        .map(|column| evaluate_column(column, generators))
+        .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(())
+    Ok(OutDocument(rows))
 }
 
-pub fn evaluate_mockadoc(blocks: Vec<Block>) -> Result<(), MockadocError> {
-    let _something = blocks.into_iter()
-        .map(|block|
-            match block {
-                Block::ImportStatement(imports) =>
-                    todo!("imports"),
+fn evaluate_imports(import_statement: ImportStatement) -> Result<GeneratorSet, MockadocError> {
+    match import_statement {
+        ImportStatement(imports) => {
+            let mut generators = None::<GeneratorSet>;
 
-                Block::Documents(documents) =>
-                    documents.into_iter()
-                        .map(evaluate_document)
-                        .collect::<Vec<_>>(),
+            for path in imports.into_iter() {
+                let file = std::fs::read_to_string(path).map_err(MockadocError::from)?;
+                let gen_set = run_mockagen(&file).map_err(MockadocError::from)?;
+
+                match &mut generators {
+                    Some(gens) => gens.merge(gen_set),
+                    None => generators = Some(gen_set),
+                }
             }
-        )
-        .collect::<Vec<_>>();
-    
+
+            Ok(generators.expect("TODO create error explaining that there are no imports"))
+        }
+    }
+}
+
+pub fn evaluate_mockadoc(mockadoc_file: MockadocFile) -> Result<(), MockadocError> {
+    let generators = evaluate_imports(mockadoc_file.import_statement)?;
+
+    let documents = mockadoc_file.documents
+        .into_iter()
+        .map(|document| evaluate_document(document, &generators).map_err(MockadocError::from_eval_err))
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(())
 }

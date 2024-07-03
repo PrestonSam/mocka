@@ -193,9 +193,11 @@ fn unstack_def_node(def_node: NestedDefNode) -> Vec<TerminalDefNode> {
             let (matchers_by_child, unstacked_grandchildren): (Vec<_>, Vec<_>) = children.into_iter()
                 .map(|node| (node.matchers, unstack_def_node(node.children)))
                 .unzip();
-            let grandchildren_by_depth = unstacked_grandchildren.into_iter().transpose();
 
-            grandchildren_by_depth.into_iter()
+            let grandchildren_by_depth = unstacked_grandchildren.into_iter()
+                .transpose().expect("TODO add error handling here");
+
+            grandchildren_by_depth
                 .map(|grandchildren_defnodes_at_depth| {
                     let match_nodes: Vec<_> = grandchildren_defnodes_at_depth.into_iter()
                         .zip(matchers_by_child.clone().into_iter())
@@ -219,9 +221,8 @@ fn unstack_def_node(def_node: NestedDefNode) -> Vec<TerminalDefNode> {
                     Some(grandchildren_by_child) => {
                         let grandchildren_defnodes_by_depth = grandchildren_by_child.into_iter()
                             .map(|grandchildren| unpack_assign_nodes(grandchildren))
-                            .transpose();
-
-                        dbg!(&grandchildren_defnodes_by_depth);
+                            .transpose()
+                            .expect("TODO add error handling here");
 
                         fn get_match_exprs_by_child(terminal_nodes: &Vec<TerminalAssignNode>) -> Vec<Vec<MatchExpr>> {
                             terminal_nodes.iter()
@@ -229,7 +230,7 @@ fn unstack_def_node(def_node: NestedDefNode) -> Vec<TerminalDefNode> {
                                 .collect()
                         }
                         
-                        let wrapped_grandchildren_defnodes_by_depth: Vec<_> = grandchildren_defnodes_by_depth.into_iter()
+                        let wrapped_grandchildren_defnodes_by_depth: Vec<_> = grandchildren_defnodes_by_depth
                             .map(|grandchildren_defnodes_at_depth| {
                                 let match_nodes: Vec<_> = grandchildren_defnodes_at_depth.into_iter()
                                     .zip(get_match_exprs_by_child(&terminal_nodes).into_iter())

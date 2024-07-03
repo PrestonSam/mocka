@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use crate::{mockagen::{packer::model::{PackingError, PackingErrorVariant, SyntaxChildren, SyntaxTree}, parser::Rule}, utils::packing::Providence};
 
 pub fn make_tree_shape_error<T>(tree: SyntaxTree) -> Result<T, PackingError> {

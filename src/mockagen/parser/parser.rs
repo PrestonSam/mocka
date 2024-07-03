@@ -1,12 +1,11 @@
 use pest_derive::Parser;
 use pest::{iterators::Pairs, Parser};
 
-use crate::utils::error::LanguageError;
+use crate::{mockagen::MockagenError, utils::error::LanguageError};
 
-use super::model::MockagenError;
 
 #[derive(Parser)]
-#[grammar = "mockagen/parser.pest"]
+#[grammar = "mockagen/parser/parser.pest"]
 pub struct MockagenParser;
 
 pub fn parse_mockagen(code: &str) -> Result<Pairs<'_, Rule>, MockagenError> {

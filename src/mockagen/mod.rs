@@ -1,24 +1,20 @@
-use crate::mockagen::{debug::write_tsv, evaluator::model::GeneratorSet};
+use crate::mockagen::parser::parse_mockagen;
 
-use self::{evaluator::evaluate_mockagen, packer::pack_mockagen, parser::parse_mockagen};
+use self::{evaluator::evaluate_mockagen, packer::pack_mockagen};
 
 mod model;
 mod utils;
 mod parser;
 mod packer;
 mod evaluator;
-mod debug;
 
 pub use model::MockagenError;
+pub use evaluator::model::{GeneratorSet, ColumnGenerator, OutValue};
 
-pub fn run_mockagen(code: &str) -> Result<(), MockagenError> {
+pub fn run_mockagen(code: &str) -> Result<GeneratorSet, MockagenError> {
     let pairs = parse_mockagen(code)?;
     let statements = pack_mockagen(pairs)?;
-    dbg!(&statements);
     let evaluation = evaluate_mockagen(statements);
-    dbg!(&evaluation);
 
-    let gen_set = GeneratorSet::new(evaluation);
-
-    write_tsv(&gen_set, 1_000)
+    Ok(GeneratorSet::new(evaluation))
 }

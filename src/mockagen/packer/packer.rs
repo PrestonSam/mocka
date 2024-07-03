@@ -1,17 +1,15 @@
 use pest::iterators::Pairs;
 
-use crate::mockagen::MockagenError;
-use crate::utils::error::LanguageError;
-use crate::utils::packing::{Providence, SkipRules};
+use crate::utils::{error::LanguageError, packing::{Providence, SkipRules}};
 
-use super::model::{
-    Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode,
-    NestedAssignNode, NestedDefNode, PackingError, PackingErrorVariant, PrimitiveValue,
-    Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode
-};
-
-use super::super::{
+use crate::mockagen::{
+    MockagenError,
     parser::Rule,
+    packer::model::{
+        Definition, HigherOrderValue, MatchChildren, MatchExpr, MatchNode,
+        NestedAssignNode, NestedDefNode, PackingError, PackingErrorVariant, PrimitiveValue,
+        Statement, SyntaxChildren, SyntaxTree, Value, Weight, WeightedValue, WildcardNode
+    },
     utils::{
         error::{make_no_array_match_found_error, make_tree_shape_error},
         unpackers::{unpack_range, vec_into_array_varied_length, PackingResult}
@@ -256,7 +254,7 @@ fn parse_single_definition(nodes: Vec<SyntaxTree>) -> Result<Definition, Packing
 
 fn parse_names(trees: Vec<SyntaxTree>) -> Result<Vec<String>, PackingError> {
     trees.into_iter()
-        .map(|tree| {
+        .map(|tree|
             match (tree.token.rule, tree.token.providence) {
                 (Rule::IDENTIFIER, Providence { src, .. }) =>
                     Ok(src.to_string()),
@@ -264,7 +262,7 @@ fn parse_names(trees: Vec<SyntaxTree>) -> Result<Vec<String>, PackingError> {
                 (rule, providence) =>
                     make_tree_shape_error(SyntaxTree::from((rule, providence, tree.children))),
             }
-        }).collect()
+        ).collect()
 }
 
 fn parse_match_clause(tree: SyntaxTree) -> Result<MatchNode<NestedAssignNode>, PackingError> {

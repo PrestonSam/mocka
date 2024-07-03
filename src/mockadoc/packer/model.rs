@@ -1,4 +1,4 @@
-use crate::{mockadoc::parser::Rule, utils::packing::SkipRules};
+use crate::{mockadoc::parser::Rule, utils::{iterator::TransposeError, packing::SkipRules}};
 
 impl SkipRules for Rule {
     type Rule = Rule;
@@ -48,23 +48,30 @@ pub struct Document {
 pub struct ImportStatement(pub Vec<String>);
 
 #[derive(Debug)]
-pub enum Block {
-    ImportStatement(ImportStatement),
-    Documents(Vec<Document>),
+pub struct MockadocFile {
+    pub import_statement: ImportStatement,
+    pub documents: Vec<Document>,
 }
 
 
 #[derive(Debug)]
-pub enum PackingErrorVariant { // At some point I'll have to break this out into sub-errors
+pub enum PackingErrorVariant {
     SyntaxUnhandledTreeShape(String),
     SyntaxChildrenArrayCastError(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     SyntaxNodeCountMismatch(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     InconsistentColumnTypes { heading: ColumnHeading, cell: CellData, row: usize },
     TableHasNoRows { column_heading: String },
+    InconsistentTableRowWidths(TransposeError<CellData>)
 }
 
 pub type PackingError =
     crate::utils::packing::PackingError<PackingErrorVariant, Rule>;
+
+impl From<TransposeError<CellData>> for PackingError {
+    fn from(value: TransposeError<CellData>) -> Self {
+        PackingError::new(PackingErrorVariant::InconsistentTableRowWidths(value))
+    }
+}
 
 pub type SyntaxToken<'a> =
     crate::utils::packing::SyntaxToken<'a, Rule>;

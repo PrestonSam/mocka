@@ -1,4 +1,4 @@
-body = _{ properties? ~ import_statement? ~ documents ~ EOI }
+body = _{ properties? ~ import_statement ~ documents ~ EOI }
 
 properties = _{ SOI ~ "---" ~ NEWLINE ~ !"---"+ ~ NEWLINE ~ "---" ~ NEWLINE+ }
 

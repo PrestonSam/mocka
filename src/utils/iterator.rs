@@ -1,25 +1,46 @@
 use std::{collections::HashMap, ops::ControlFlow};
 
+#[derive(Debug)]
+pub enum TransposeError<T> {
+    InconsistentVecLengths(Vec<Vec<T>>),
+}
+
+pub struct Transposed<T> {
+    src: Vec<std::vec::IntoIter<T>>,
+}
+
+impl<T> Iterator for Transposed<T> {
+    type Item = Vec<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.src.iter_mut()
+            .map(|vec| vec.next())
+            .collect::<Option<Vec<_>>>()
+    }
+}
 
 pub trait Transpose: Iterator {
-    fn transpose<T>(mut self) -> Vec<Vec<T>> // TODO in future make this all iterator-y
+    fn transpose<T>(mut self) -> Result<Transposed<T>, TransposeError<T>>
     where
         Self: Iterator<Item = Vec<T>> + Sized,
     {
-        match self.next() {
-            Some(vec) => {
-                let mut out_vec: Vec<Vec<T>> = (0..vec.len()).map(|_| vec![]).collect();
-                let this_iter = std::iter::once(vec).chain(self);
-                
-                for vec in this_iter {
-                    for (vec, val) in out_vec.iter_mut().zip(vec) {
-                        vec.push(val);
-                    }
-                }
+        let mut compare_length = Option::None::<usize>;
 
-                out_vec
-            }
-            None => Vec::new()
+        let all_same_length = self
+            .all(|vec| {
+                let vec_len = vec.len();
+                let cmp_len = compare_length.get_or_insert(vec_len);
+
+                *cmp_len == vec_len
+            });
+
+        if all_same_length {
+            let src = self.map(|vec| vec.into_iter())
+                .collect();
+
+            Ok(Transposed { src })
+        } else {
+            Err(TransposeError::InconsistentVecLengths(self.collect()))
         }
     }
 }

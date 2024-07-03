@@ -1,4 +1,4 @@
-use mockagen::run_mockagen;
+use mockagen::{run_mockagen, GeneratorSet};
 
 use crate::mockadoc::run_mockadoc;
 
@@ -7,14 +7,12 @@ mod mockadoc;
 mod error;
 mod utils;
 
-fn mockagen() -> Result<(), crate::error::Error> {
+fn mockagen() -> Result<GeneratorSet, crate::error::Error> {
     let file = std::fs::read_to_string("debug-data/debug.mkg").unwrap();
     let output = run_mockagen(&file);
 
-    // dbg!(&output);
 
-    output.map(|_| ())
-        .map_err(|err| crate::error::Error::MockagenError(err))
+    output.map_err(|err| crate::error::Error::MockagenError(err))
 }
 
 

@@ -1,4 +1,4 @@
-use crate::utils::error::LanguageError;
+use crate::{mockagen::MockagenError, utils::error::LanguageError};
 
 use super::{evaluator::model::EvaluationError, packer::model::PackingError, parser::Rule};
 
@@ -13,6 +13,18 @@ pub enum MockadocError {
 impl From<pest::error::Error<Rule>> for MockadocError {
     fn from(value: pest::error::Error<Rule>) -> Self {
         MockadocError::ParsingError(Box::from(value))
+    }
+}
+
+impl From<std::io::Error> for MockadocError {
+    fn from(value: std::io::Error) -> Self {
+        MockadocError::EvaluationError(EvaluationError::FileReadError(value))
+    }
+}
+
+impl From<MockagenError> for MockadocError {
+    fn from(value: MockagenError) -> Self {
+        MockadocError::EvaluationError(EvaluationError::MockagenError(value))
     }
 }
 

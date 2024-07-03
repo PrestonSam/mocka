@@ -2,7 +2,7 @@ use pest::iterators::Pairs;
 
 use crate::{mockadoc::{packer::model::MetadataProperty, parser::Rule, MockadocError}, utils::{error::LanguageError, iterator::Transpose}};
 
-use super::{error::{make_no_array_match_found_error, make_tree_shape_error}, model::{Block, CellData, Column, ColumnHeading, Document, ImportStatement, MetadataProperties, PackingError, PackingErrorVariant, PackingResult, SyntaxChildren, SyntaxToken, SyntaxTree}, utils::{vec_first_and_rest, vec_into_array_varied_length, FirstAndRest}};
+use super::{error::{make_no_array_match_found_error, make_tree_shape_error}, model::{CellData, Column, ColumnHeading, Document, ImportStatement, MetadataProperties, MockadocFile, PackingError, PackingErrorVariant, PackingResult, SyntaxChildren, SyntaxToken, SyntaxTree}, utils::{vec_first_and_rest, vec_into_array_varied_length, FirstAndRest}};
 
 fn parse_title(trees: Vec<SyntaxTree>) -> Result<String, PackingError> {
     match vec_into_array_varied_length(trees)? {
@@ -103,7 +103,7 @@ fn parse_data_row(tree: SyntaxTree) -> Result<Vec<CellData>, PackingError> {
 }
 
 fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellData>>) -> Result<Vec<Column>, PackingError> {
-    let data_columns = data_rows.into_iter().transpose();
+    let data_columns = data_rows.into_iter().transpose().map_err(PackingError::from)?;
 
     column_headings.into_iter()
         .zip(data_columns)
@@ -117,9 +117,9 @@ fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellD
                                 CellData::MetadataProperties(props) =>
                                     Ok(props),
 
-                            _ =>
-                                Err(PackingErrorVariant::InconsistentColumnTypes { heading: heading.clone(), cell, row })
-                        })
+                                _ =>
+                                    Err(PackingErrorVariant::InconsistentColumnTypes { heading: heading.clone(), cell, row })
+                            })
                         .collect::<Result<Vec<_>, _>>()?;
 
                     Ok(Column::Metadata(tags_by_row))
@@ -186,7 +186,7 @@ fn parse_table(trees: Vec<SyntaxTree>) -> Result<Vec<Column>, PackingError> {
 
         v => {
             dbg!(&v);
-            panic!("Unexpected value")
+            todo!("Produce error: 'Unexpected value'")
         }
     }
 }
@@ -222,6 +222,7 @@ fn parse_documents(trees: Vec<SyntaxTree>) -> Result<Vec<Document>, PackingError
         .collect::<Result<_, _>>()
 }
 
+// TODO maybe put some validation in here? I'm not sure
 fn parse_import_statement(trees: Vec<SyntaxTree>) -> ImportStatement {
     let imports = trees.into_iter()
         .map(|path| path.as_string())
@@ -230,28 +231,27 @@ fn parse_import_statement(trees: Vec<SyntaxTree>) -> ImportStatement {
     ImportStatement(imports)
 }
 
-pub fn pack_mockadoc(pairs: Pairs<'_, Rule>) -> Result<Vec<Block>, MockadocError> {
-    pairs.map(SyntaxTree::from)
-        .map_while(|tree| {
-            match (tree.token.rule, tree.children) {
-                (Rule::import_statement, Some(children)) =>
-                    Some(Ok(Block::ImportStatement(parse_import_statement(children.get_values())))),
+fn parse_entrypoint(trees: Vec<SyntaxTree>) -> Result<MockadocFile, PackingError> {
+    match vec_into_array_varied_length(trees)? {
+        [ Some((Rule::import_statement, _, Some(import_children)))
+        , Some((Rule::documents, _, Some(document_children)))
+        , Some((Rule::EOI, _, None))
+        ] => {
+            let import_statement = parse_import_statement(import_children.get_values());
+            let documents = parse_documents(document_children.get_values())
+                .with_rule(Rule::documents)?;
 
-                (Rule::documents, Some(children)) => {
-                    let documents = parse_documents(children.get_values())
-                        .with_rule(Rule::documents)
-                        .map(Block::Documents);
+            Ok(MockadocFile { import_statement, documents })
+        }
 
-                    Some(documents)
-                }
+        nodes =>
+            make_no_array_match_found_error(nodes),
+    }
+}
 
-                (Rule::EOI, None) =>
-                    None,
+pub fn pack_mockadoc(pairs: Pairs<'_, Rule>) -> Result<MockadocFile, MockadocError> {
+    let trees = pairs.map(SyntaxTree::from).collect();
 
-                (rule, children) =>
-                    Some(make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children)))),
-            }
-        })
-        .collect::<Result<_, _>>()
-        .map_err(MockadocError::from_packing_err)
+    parse_entrypoint(trees).map_err(MockadocError::from_packing_err)
+
 }
