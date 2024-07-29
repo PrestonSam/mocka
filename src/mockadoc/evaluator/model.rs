@@ -17,7 +17,6 @@ impl From<MockagenError> for EvaluationError {
     }
 }
 
-
 pub struct OutRow(pub Vec<OutValue>);
 
 pub struct OutDocument<'a>(pub Vec<ColumnGenerator<'a>>);

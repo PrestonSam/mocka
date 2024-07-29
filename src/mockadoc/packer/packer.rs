@@ -22,6 +22,9 @@ fn parse_column_names(tree: SyntaxTree) -> Result<Vec<ColumnHeading>, PackingErr
                 match (child.token.rule, child.token.providence, child.children) {
                     (Rule::TEXT, providence, _) =>
                         Ok(ColumnHeading::Text(providence.as_string())),
+
+                    (Rule::DATA_KEY, providence, _) =>
+                        Ok(ColumnHeading::DataKey(providence.as_string())),
                     
                     (Rule::METADATA_TAG, _, _) =>
                         Ok(ColumnHeading::MetadataTag),
@@ -102,57 +105,52 @@ fn parse_data_row(tree: SyntaxTree) -> Result<Vec<CellData>, PackingError> {
     }
 }
 
+macro_rules! unpack_enum {
+    ($expression:expr, $pattern:pat => $value:expr) => {
+        match $expression {
+            $pattern => Some($value),
+            _ => None
+        }
+    };
+}
+
+macro_rules! unpack_enum_fn {
+    ($pattern:pat => $value:expr) => {
+        |cell| unpack_enum!(cell, $pattern => $value)
+    }
+}
+
 fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellData>>) -> Result<Vec<Column>, PackingError> {
-    let data_columns = data_rows.into_iter().transpose().map_err(PackingError::from)?;
+    let data_columns = data_rows.into_iter()
+        .transpose()
+        .map_err(PackingError::from)?;
 
     column_headings.into_iter()
-        .zip(data_columns)
-        .map(|(heading, column)| {
-            let column_numbered = column.into_iter().enumerate();
-            match heading { // TODO clean
-                ColumnHeading::MetadataTag => {
-                    let tags_by_row = column_numbered
-                        .map(|(row, cell)|
-                            match cell {
-                                CellData::MetadataProperties(props) =>
-                                    Ok(props),
+        .zip(data_columns.enumerate())
+        .map(|(heading, (col_no, column))| {
+            fn into_column<T>(column_number: usize, column: Vec<CellData>, get_props: fn(CellData) -> Option<T>, make_column: impl FnOnce(Vec<T>) -> Column) -> Result<Column, PackingErrorVariant> {
+                let tags_by_row = column.into_iter()
+                    .enumerate()
+                    .map(|(row, cell)|
+                        get_props(cell)
+                            .ok_or_else(|| PackingErrorVariant::InconsistentColumnTypes { column_number, row }))
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                                _ =>
-                                    Err(PackingErrorVariant::InconsistentColumnTypes { heading: heading.clone(), cell, row })
-                            })
-                        .collect::<Result<Vec<_>, _>>()?;
+                Ok(make_column(tags_by_row))
+            }
 
-                    Ok(Column::Metadata(tags_by_row))
-                }
-                ColumnHeading::GeneratorTag => {
-                    let tags_by_row = column_numbered
-                        .map(|(row, cell)|
-                            match cell {
-                                CellData::MockagenId(props) =>
-                                    Ok(props),
-
-                            _ =>
-                                Err(PackingErrorVariant::InconsistentColumnTypes { heading: heading.clone(), cell, row })
-                            }
-                        )
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(Column::Generators(tags_by_row))
-                }
-                ColumnHeading::Text(heading_text) => {
-                    let tags_by_row = column_numbered
-                        .map(|(row, cell)|
-                            match cell {
-                                CellData::Text(props) =>
-                                    Ok(props),
-
-                            _ =>
-                                Err(PackingErrorVariant::InconsistentColumnTypes { heading: ColumnHeading::Text(heading_text.clone()), cell, row })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(Column::Text { title: heading_text, data: tags_by_row })
-                }
+            match heading {
+                ColumnHeading::MetadataTag =>
+                    into_column(col_no, column, unpack_enum_fn!(CellData::MetadataProperties(props) => props), Column::Metadata),
+                
+                ColumnHeading::GeneratorTag =>
+                    into_column(col_no, column, unpack_enum_fn!(CellData::MockagenId(props) => props), Column::Generators),
+                
+                ColumnHeading::Text(title) =>
+                    into_column(col_no, column, unpack_enum_fn!(CellData::Text(props) => props), |data| Column::Text { title, data }),
+                
+                ColumnHeading::DataKey(title) =>
+                    into_column(col_no, column, unpack_enum_fn!(CellData::Text(props) => props), |data| Column::DataKey { title, data })
             }
         })
         .collect::<Result<_, _>>()

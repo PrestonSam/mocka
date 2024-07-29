@@ -9,8 +9,7 @@ Something worth noting here is that the 'metadata' output generates a list of an
 
 I want to change the spec to support all this, but I'm not certain on how the new spec will look.
 
-One option would be as follows:
-
+For this I will use the following syntax:
 
 ```md
 ### Channel
@@ -25,18 +24,38 @@ One option would be as follows:
 Where _italics_ defines the key used in data generation and the generator (and metadata) tags are distinguished using backticks.
 
 
-Another approach would be to dictate the key on a separate line as follows:
+
+Nah let's separate the schema from the outputs and make everything both generic and explicit - like so
 
 ```md
-### Channel
+# Channel
 
-KEY: Template name
-
-|Template name|Internal name|SQL Type|`GENERATOR`|
+## Schema
+|Template name|Internal name|SQL Type|`Generator`|
 |---|---|---|---|
 |ISO_TIMESTAMP|UnixTimestamp|string|`unix-timestamp`|
 |EVENT_TYPE|EventType|string|`channel-event-type`|
 |REGION|ActorRegion|string|`region`|
+
+## Outputs
+ - ### Tabular
+    - Formats
+        - TSV
+        - CSV
+    - Column names
+        - Template name
+    - Row values
+        - Generator
+ - ### Document
+   - Formats
+     - JSON
+   - Members
+     - Template name
+     - Internal name
+     - SQL Type
+
 ```
 
-...Nah I don't much like that syntax. I guess we'll keep the italics syntax, then.
+I'm not _quite_ convinced by this syntax, but I think it's much closer to a good design than before.
+
+I think it's still worth putting special syntax for the headings of generator columns, so that it's a syntax error if you don't have a homogenous column type.

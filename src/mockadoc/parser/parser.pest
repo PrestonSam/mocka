@@ -17,7 +17,7 @@ table = { heading ~ (NEWLINE ~ row)+ }
 
 heading = { column_names ~ NEWLINE ~ table_divider }
 
-column_names = { ("|" ~ (TEXT | METADATA_TAG | GENERATOR_TAG))+ ~ "|" }
+column_names = { ("|" ~ (METADATA_TAG | GENERATOR_TAG | DATA_KEY | TEXT))+ ~ "|" }
 
 table_divider = _{ ("|" ~ column_divider)+ ~ "|" }
 
@@ -35,14 +35,18 @@ PRIMARY_TIMESTAMP = { "PRIMARY TIMESTAMP" }
 
 PERSONAL = { "PERSONAL" }
 
-mockagen_identifier = ${ "`" ~ MOCKAGEN_IDENTIFIER ~ "`" }
+mockagen_identifier = ${ GENERATOR_MARKER ~ MOCKAGEN_IDENTIFIER ~ GENERATOR_MARKER }
 
 TEXT = @{ ASCII_ALPHA ~ (ASCII_ALPHA | " " | "_")* ~ &("|" | NEWLINE) }
 
 MOCKAGEN_IDENTIFIER = @{ (ASCII_ALPHA_LOWER | "-")+ }
 
-GENERATOR_TAG = ${ ITALICS_MARKER ~ "GENERATOR" ~ ITALICS_MARKER }
+DATA_KEY =  @{ ITALICS_MARKER ~ TEXT ~ ITALICS_MARKER }
 
-METADATA_TAG = @{ ITALICS_MARKER ~ "METADATA" ~ ITALICS_MARKER }
+GENERATOR_TAG = @{ GENERATOR_MARKER ~ "GENERATOR" ~ GENERATOR_MARKER }
+
+METADATA_TAG = @{ GENERATOR_MARKER ~ "METADATA" ~ GENERATOR_MARKER }
+
+GENERATOR_MARKER = _{ "`" }
 
 ITALICS_MARKER = _{ "*" | "_" }

@@ -21,6 +21,9 @@ fn evaluate_column(column: Column, generators: &GeneratorSet) -> Result<ColumnGe
 
         Column::Text { title, data } => // This shouldn't be part of the data generation
             todo!(),
+        
+        Column::DataKey { title, data } =>
+            todo!(),
     }
 }
 
@@ -29,6 +32,13 @@ fn evaluate_document(document: Document, generators: &GeneratorSet) -> Result<Ou
         .into_iter()
         .map(|column| evaluate_column(column, generators))
         .collect::<Result<Vec<_>, _>>()?;
+
+
+    // I need some way to choose either to generate data or to produce the JSON output.
+    // I'm becoming unsure about the exact purpose of the JSON text. Shouldn't I take it out of the scope all together?
+    // Out or the original context, the JSON generation seems difficult to really justify
+    // I think use clap, then have three modes
+    // 'Static', 'Generated', and 'Both'
 
     Ok(OutDocument(rows))
 }

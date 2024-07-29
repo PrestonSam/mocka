@@ -28,6 +28,7 @@ pub enum CellData {
 pub enum ColumnHeading {
     MetadataTag,
     GeneratorTag,
+    DataKey(String),
     Text(String),
 }
 
@@ -36,12 +37,13 @@ pub enum Column {
     Metadata(Vec<MetadataProperties>),
     Generators(Vec<String>),
     Text { title: String, data: Vec<String> },
+    DataKey { title: String, data: Vec<String> },
 }
 
 #[derive(Debug)]
 pub struct Document {
     pub title: String,
-    pub columns: Vec<Column>,
+    pub columns: Vec<Column>, // I think this should have "the" generator column.
 }
 
 #[derive(Debug)]
@@ -59,7 +61,7 @@ pub enum PackingErrorVariant {
     SyntaxUnhandledTreeShape(String),
     SyntaxChildrenArrayCastError(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     SyntaxNodeCountMismatch(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
-    InconsistentColumnTypes { heading: ColumnHeading, cell: CellData, row: usize },
+    InconsistentColumnTypes { column_number: usize, row: usize },
     TableHasNoRows { column_heading: String },
     InconsistentTableRowWidths(TransposeError<CellData>)
 }
