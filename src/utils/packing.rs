@@ -12,6 +12,10 @@ impl<'a> Providence<'a> {
     pub fn as_string(&self) -> String {
         self.src.to_string()
     }
+    
+     pub fn as_trimmed_string(&self) -> String {
+        self.src.trim().to_string()
+     }
 }
 
 fn trunc(str: &str, len: usize) -> String {

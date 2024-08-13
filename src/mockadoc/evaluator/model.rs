@@ -8,7 +8,7 @@ use crate::{
 pub enum EvaluationError {
     MockagenError(MockagenError),
     FileReadError(std::io::Error),
-    DocumentShapeError(TransposeError<OutValue>)
+    DocumentShapeError(TransposeError)
 }
 
 impl From<MockagenError> for EvaluationError {

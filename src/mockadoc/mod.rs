@@ -11,7 +11,7 @@ mod utils;
 
 pub fn run_mockadoc(code: &str) -> Result<(), MockadocError> {
     let pairs = parse_mockadoc(code)?;
-    dbg!(&pairs);
+    // dbg!(&pairs);
     let packed = pack_mockadoc(pairs)?;
     dbg!(&packed);
     let evaluation = evaluate_mockadoc(packed)?;

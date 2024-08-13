@@ -8,7 +8,7 @@ fn parse_title(trees: Vec<SyntaxTree>) -> Result<String, PackingError> {
     match vec_into_array_varied_length(trees)? {
         [ Some((Rule::TEXT, providence, None))
         ] =>
-            Ok(providence.as_string()),
+            Ok(providence.as_trimmed_string()),
 
         nodes =>
             make_no_array_match_found_error(nodes),
@@ -21,7 +21,7 @@ fn parse_column_names(tree: SyntaxTree) -> Result<Vec<ColumnHeading>, PackingErr
             children.get_values_iter().map(|child| {
                 match (child.token.rule, child.token.providence, child.children) {
                     (Rule::TEXT, providence, _) =>
-                        Ok(ColumnHeading::Text(providence.as_string())),
+                        Ok(ColumnHeading::Text(providence.as_trimmed_string())),
 
                     (Rule::DATA_KEY, providence, _) =>
                         Ok(ColumnHeading::DataKey(providence.as_string())),
@@ -85,7 +85,7 @@ fn parse_data_cell(tree: SyntaxTree) -> Result<CellData, PackingError> {
                 .with_rule(Rule::mockagen_identifier),
 
         (Rule::TEXT, providence, _) =>
-            Ok(CellData::Text(providence.as_string())),
+            Ok(CellData::Text(providence.as_trimmed_string())),
 
         (rule, providence, children) =>
             make_tree_shape_error(SyntaxTree::from((rule, providence, children))),
@@ -121,6 +121,23 @@ macro_rules! unpack_enum_fn {
 }
 
 fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellData>>) -> Result<Vec<Column>, PackingError> {
+    fn into_column<T>(
+        column_number: usize,
+        column: Vec<CellData>,
+        get_props: fn(CellData) -> Option<T>,
+        make_column: impl FnOnce(Vec<T>) -> Column
+    ) -> Result<Column, PackingErrorVariant> {
+
+        let tags_by_row = column.into_iter()
+            .enumerate()
+            .map(|(row, cell)|
+                get_props(cell)
+                    .ok_or_else(|| PackingErrorVariant::InconsistentColumnTypes { column_number, row }))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(make_column(tags_by_row))
+    }
+
     let data_columns = data_rows.into_iter()
         .transpose()
         .map_err(PackingError::from)?;
@@ -128,17 +145,6 @@ fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellD
     column_headings.into_iter()
         .zip(data_columns.enumerate())
         .map(|(heading, (col_no, column))| {
-            fn into_column<T>(column_number: usize, column: Vec<CellData>, get_props: fn(CellData) -> Option<T>, make_column: impl FnOnce(Vec<T>) -> Column) -> Result<Column, PackingErrorVariant> {
-                let tags_by_row = column.into_iter()
-                    .enumerate()
-                    .map(|(row, cell)|
-                        get_props(cell)
-                            .ok_or_else(|| PackingErrorVariant::InconsistentColumnTypes { column_number, row }))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                Ok(make_column(tags_by_row))
-            }
-
             match heading {
                 ColumnHeading::MetadataTag =>
                     into_column(col_no, column, unpack_enum_fn!(CellData::MetadataProperties(props) => props), Column::Metadata),
@@ -250,6 +256,6 @@ fn parse_entrypoint(trees: Vec<SyntaxTree>) -> Result<MockadocFile, PackingError
 pub fn pack_mockadoc(pairs: Pairs<'_, Rule>) -> Result<MockadocFile, MockadocError> {
     let trees = pairs.map(SyntaxTree::from).collect();
 
-    parse_entrypoint(trees).map_err(MockadocError::from_packing_err)
-
+    parse_entrypoint(trees)
+        .map_err(MockadocError::from_packing_err)
 }

@@ -1,16 +1,19 @@
+
 body = _{ properties? ~ import_statement ~ documents ~ EOI }
 
 properties = _{ SOI ~ "---" ~ NEWLINE ~ !"---"+ ~ NEWLINE ~ "---" ~ NEWLINE+ }
 
 import_statement = { "IMPORT" ~ path ~ ("," ~ path)* ~ NEWLINE+ }
 
-path = { "\"" ~ !"\""+ ~ "\"" }
+path_char = { "_" | "." | "/" | 'a'..'z' | 'A'..'Z' | '0'..'9' }
+
+path = @{ "\"" ~ path_char+ ~ "\"" }
 
 documents = { document ~ (NEWLINE+ ~ document)* ~ NEWLINE* }
 
-document = { title ~ NEWLINE+ ~ table }
+document = { title ~ NEWLINE* ~ table }
 
-title = { "### " ~ TEXT }
+title = { "###" ~ TEXT ~ NEWLINE }
 
 // It'd be nice if I could use the stack to enforce that the table isn't jagged
 table = { heading ~ (NEWLINE ~ row)+ }
@@ -37,11 +40,11 @@ PERSONAL = { "PERSONAL" }
 
 mockagen_identifier = ${ GENERATOR_MARKER ~ MOCKAGEN_IDENTIFIER ~ GENERATOR_MARKER }
 
-TEXT = @{ ASCII_ALPHA ~ (ASCII_ALPHA | " " | "_")* ~ &("|" | NEWLINE) }
+TEXT = @{ (ASCII_ALPHA | "_" | " ")+ }
 
 MOCKAGEN_IDENTIFIER = @{ (ASCII_ALPHA_LOWER | "-")+ }
 
-DATA_KEY =  @{ ITALICS_MARKER ~ TEXT ~ ITALICS_MARKER }
+DATA_KEY = @{ ITALICS_MARKER ~ TEXT ~ ITALICS_MARKER }
 
 GENERATOR_TAG = @{ GENERATOR_MARKER ~ "GENERATOR" ~ GENERATOR_MARKER }
 
@@ -50,3 +53,5 @@ METADATA_TAG = @{ GENERATOR_MARKER ~ "METADATA" ~ GENERATOR_MARKER }
 GENERATOR_MARKER = _{ "`" }
 
 ITALICS_MARKER = _{ "*" | "_" }
+
+WHITESPACE = _{ " " }

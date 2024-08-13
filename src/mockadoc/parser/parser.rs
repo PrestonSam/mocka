@@ -10,5 +10,8 @@ pub struct MockadocParser;
 
 pub fn parse_mockadoc(code: &str) -> Result<Pairs<'_, Rule>, MockadocError> {
     MockadocParser::parse(Rule::body, code)
-        .map_err(MockadocError::from)
+        .map_err(|err| {
+            println!("{}", &err.to_string());
+            MockadocError::from(err)
+        })
 }

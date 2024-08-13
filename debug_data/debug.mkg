@@ -1,0 +1,50 @@
+
+DEF unix-timestamp = timestamp/date 2023-05-08 2023-07-07
+
+DEF age = integer 18 90
+
+DEF country, currency-code 
+    = 2% "United Kingdom"
+        = "GBP"
+    = 3% "China"
+        = "CNY"
+    = 14% "Europe"
+        = "EUR"
+    = 10% "USA"
+        = "USD"
+    = "Japan"
+        = "JPY"
+
+USING country DEF region
+    ? "United Kingdom"
+        = ONEOF
+        | 17% "London"
+        | 10% "Manchester"
+        | 5% "Liverpoole"
+        | 11% "Leeds"
+        | 13% "Birmingham"
+        | 3% "Cardiff"
+        | 6% "Reading"
+        | 9% "Bristol"
+        | 2% "Oxford"
+        | 4% "Glasgow"
+        | 8.2% "Southampton"
+        | "Cambridge"
+        | "Edinburgh"
+    ? any
+        = "Unknown"
+
+DEF first-name
+    = ONEOF
+    | "Tom"
+    | "Dick"
+    | "Harry"
+
+DEF surname
+    = ONEOF
+    | "Smith"
+    | "Baker"
+    | "Carpenter"
+
+DEF full-name = join surname "," first-name
+

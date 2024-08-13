@@ -1,0 +1,26 @@
+# Channel
+
+## Schema
+|Template name|Internal name|SQL Type|`Generator`|
+|---|---|---|---|
+|ISO_TIMESTAMP|UnixTimestamp|string|`unix-timestamp`|
+|EVENT_TYPE|EventType|string|`channel-event-type`|
+|REGION|ActorRegion|string|`region`|
+
+## Outputs
+ - ### Tabular
+    - Formats
+        - TSV
+        - CSV
+    - Column names
+        - Template name
+    - Row values
+        - Generator
+ - ### Document
+   - Formats
+     - JSON
+   - Members
+     - Template name
+     - Internal name
+     - SQL Type
+

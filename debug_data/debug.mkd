@@ -1,0 +1,9 @@
+IMPORT "./debug.mkg"
+
+### Transaction
+
+| Template name | Internal name | DSQL Type | `GENERATOR`      | `METADATA`        |
+| ------------- | ------------- | --------- | ---------------- | ----------------- |
+| Timestamp     | UnixTimestamp | string    | `unix-timestamp` | PRIMARY TIMESTAMP |
+| Name          | ActorName     | string    | `full-name`      | PERSONAL          |
+

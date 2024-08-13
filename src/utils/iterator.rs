@@ -1,10 +1,11 @@
 use std::{collections::HashMap, ops::ControlFlow};
 
 #[derive(Debug)]
-pub enum TransposeError<T> {
-    InconsistentVecLengths(Vec<Vec<T>>),
+pub enum TransposeError {
+    InconsistentVecLengths { expected_length: usize, found_length: usize },
 }
 
+#[derive(Debug)]
 pub struct Transposed<T> {
     src: Vec<std::vec::IntoIter<T>>,
 }
@@ -20,28 +21,26 @@ impl<T> Iterator for Transposed<T> {
 }
 
 pub trait Transpose: Iterator {
-    fn transpose<T>(mut self) -> Result<Transposed<T>, TransposeError<T>>
+    fn transpose<T>(self) -> Result<Transposed<T>, TransposeError>
     where
         Self: Iterator<Item = Vec<T>> + Sized,
     {
         let mut compare_length = Option::None::<usize>;
 
-        let all_same_length = self
-            .all(|vec| {
+        self.fold(Ok(vec![]), |rslt, vec| {
+            rslt.and_then(|mut src| {
                 let vec_len = vec.len();
                 let cmp_len = compare_length.get_or_insert(vec_len);
 
-                *cmp_len == vec_len
-            });
+                if *cmp_len == vec_len {
+                    src.push(vec.into_iter());
 
-        if all_same_length {
-            let src = self.map(|vec| vec.into_iter())
-                .collect();
-
-            Ok(Transposed { src })
-        } else {
-            Err(TransposeError::InconsistentVecLengths(self.collect()))
-        }
+                    Ok(src)
+                } else {
+                    Err(TransposeError::InconsistentVecLengths { expected_length: *cmp_len, found_length: vec_len })
+                }
+            })
+        }).map(|src| Transposed { src })
     }
 }
 

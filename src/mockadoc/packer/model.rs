@@ -63,14 +63,14 @@ pub enum PackingErrorVariant {
     SyntaxNodeCountMismatch(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
     InconsistentColumnTypes { column_number: usize, row: usize },
     TableHasNoRows { column_heading: String },
-    InconsistentTableRowWidths(TransposeError<CellData>)
+    InconsistentTableRowWidths(TransposeError)
 }
 
 pub type PackingError =
     crate::utils::packing::PackingError<PackingErrorVariant, Rule>;
 
-impl From<TransposeError<CellData>> for PackingError {
-    fn from(value: TransposeError<CellData>) -> Self {
+impl From<TransposeError> for PackingError {
+    fn from(value: TransposeError) -> Self {
         PackingError::new(PackingErrorVariant::InconsistentTableRowWidths(value))
     }
 }
