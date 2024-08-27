@@ -1,4 +1,7 @@
 
+/////////////////
+/// Entrypoint
+/////////////////
 body = _{ properties? ~ import_statement ~ documents ~ EOI }
 
 properties = _{ SOI ~ "---" ~ NEWLINE ~ !"---"+ ~ NEWLINE ~ "---" ~ NEWLINE+ }
@@ -11,25 +14,108 @@ path = @{ "\"" ~ path_char+ ~ "\"" }
 
 documents = { document ~ (NEWLINE+ ~ document)* ~ NEWLINE* }
 
-document = { title ~ NEWLINE* ~ table }
+document = { title ~ NEWLINE+ ~ schema ~ NEWLINE+ ~ outputs }
 
-title = { "###" ~ TEXT ~ NEWLINE }
+title = { "#" ~ TEXT ~ NEWLINE }
+
+schema_tag = { "## Schema" ~ NEWLINE }
+
+schema = { schema_tag ~ table }
+
+
+////////////
+/// TABLE
+////////////
 
 // It'd be nice if I could use the stack to enforce that the table isn't jagged
-table = { heading ~ (NEWLINE ~ row)+ }
+table = { heading ~ row+ }
 
-heading = { column_names ~ NEWLINE ~ table_divider }
+heading = { column_names ~ NEWLINE ~ table_divider ~ NEWLINE }
 
-column_names = { ("|" ~ (METADATA_TAG | GENERATOR_TAG | DATA_KEY | TEXT))+ ~ "|" }
+column_names = { ("|" ~ TEXT)+ ~ "|" }
 
 table_divider = _{ ("|" ~ column_divider)+ ~ "|" }
 
 column_divider = @{ ":"? ~ "-"+ ~ ":"? }
 
-row = { ("|" ~ (METADATA_PROPERTIES | mockagen_identifier | TEXT))+ ~ "|" }
+row = { ("|" ~ (mockagen_id_and_metadata | TEXT))+ ~ "|" ~ NEWLINE }
+
+
+
+//////////////
+/// OUTPUTS
+//////////////
+
+OUTPUTS_TAG = _{ "## Outputs" ~ NEWLINE }
+
+outputs = { OUTPUTS_TAG ~ output_type+ }
+
+output_type = { output_tabular | output_document }
+
+
+output_tabular = { OUTPUT_TABULAR_TAG ~ output_tabular_formats ~ output_tabular_column_names ~ output_tabular_row_values }
+
+OUTPUT_TABULAR_TAG = _{
+    " - ### Tabular" ~ NEWLINE
+}
+
+output_tabular_formats = { OUTPUT_TABULAR_FORMATS_TAG ~ output_tabular_format_type_indented+ }
+
+OUTPUT_TABULAR_FORMATS_TAG = _{
+    "    - Formats" ~ NEWLINE
+}
+
+output_tabular_format_type_indented = { "        - " ~ output_tabular_format_type ~ NEWLINE }
+
+output_tabular_format_type = { "CSV" | "TSV" }
+
+output_tabular_column_names = { OUTPUT_TABULAR_COLUMN_NAMES_TAG ~ indented_x4_text+ }
+
+
+
+OUTPUT_TABULAR_COLUMN_NAMES_TAG = _{
+    "    - Column names" ~ NEWLINE
+}
+
+output_tabular_row_values = { OUTPUT_TABULAR_ROW_VALUES_TAG ~ indented_x4_text+ }
+
+OUTPUT_TABULAR_ROW_VALUES_TAG = _{
+    "    - Row values" ~ NEWLINE
+}
+
+
+output_document = { OUTPUT_DOCUMENT_TAG ~ output_document_formats ~ output_document_members }
+
+OUTPUT_DOCUMENT_TAG = _{
+    " - ### Document" ~ NEWLINE
+}
+
+output_document_formats = { OUTPUT_DOCUMENT_FORMATS_TAG ~ output_document_format_indented+ }
+
+output_document_format_indented = { "        - " ~ output_document_format ~ NEWLINE }
+
+output_document_format = { "JSON" }
+
+OUTPUT_DOCUMENT_FORMATS_TAG = _{
+    "   - Formats" ~ NEWLINE
+}
+
+output_document_members = { OUTPUT_DOCUMENT_MEMBERS_TAG ~ indented_x4_text+ ~ NEWLINE }
+
+OUTPUT_DOCUMENT_MEMBERS_TAG = _{
+    "   - Members" ~ NEWLINE
+}
+
+indented_x4_text = { "        - " ~ TEXT ~ NEWLINE }
+
+////////////////
+/// TERMINALS
+////////////////
+
+mockagen_id_and_metadata = { mockagen_identifier ~ "AS" ~ METADATA_PROPERTIES }
 
 METADATA_PROPERTIES =
-    { PRIMARY_TIMESTAMP ~ PERSONAL
+    { PRIMARY_TIMESTAMP ~ "," ~ PERSONAL
     | PRIMARY_TIMESTAMP
     | PERSONAL
     }
@@ -44,14 +130,6 @@ TEXT = @{ (ASCII_ALPHA | "_" | " ")+ }
 
 MOCKAGEN_IDENTIFIER = @{ (ASCII_ALPHA_LOWER | "-")+ }
 
-DATA_KEY = @{ ITALICS_MARKER ~ TEXT ~ ITALICS_MARKER }
-
-GENERATOR_TAG = @{ GENERATOR_MARKER ~ "GENERATOR" ~ GENERATOR_MARKER }
-
-METADATA_TAG = @{ GENERATOR_MARKER ~ "METADATA" ~ GENERATOR_MARKER }
-
 GENERATOR_MARKER = _{ "`" }
-
-ITALICS_MARKER = _{ "*" | "_" }
 
 WHITESPACE = _{ " " }

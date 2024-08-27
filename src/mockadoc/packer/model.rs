@@ -18,26 +18,21 @@ pub enum MetadataProperty {
 pub struct MetadataProperties(pub Vec<MetadataProperty>);
 
 #[derive(Debug)]
+pub struct MockagenIdAndMeta(pub String, pub MetadataProperties);
+
+#[derive(Debug)]
 pub enum CellData {
-    MetadataProperties(MetadataProperties),
-    MockagenId(String),
+    MockagenIdAndMeta(MockagenIdAndMeta),
     Text(String),
 }
 
 #[derive(Debug, Clone)]
-pub enum ColumnHeading {
-    MetadataTag,
-    GeneratorTag,
-    DataKey(String),
-    Text(String),
-}
+pub struct ColumnHeading(pub String);
 
 #[derive(Debug)]
 pub enum Column {
-    Metadata(Vec<MetadataProperties>),
-    Generators(Vec<String>),
+    MockagenIdAndMeta { title: String, data: Vec<MockagenIdAndMeta> },
     Text { title: String, data: Vec<String> },
-    DataKey { title: String, data: Vec<String> },
 }
 
 #[derive(Debug)]

@@ -1,11 +1,14 @@
+IMPORT "./debug.mkg"
+
 # Channel
 
 ## Schema
-|Template name|Internal name|SQL Type|`Generator`|
+|Template name|Internal name|SQL Type|Generator|
 |---|---|---|---|
-|ISO_TIMESTAMP|UnixTimestamp|string|`unix-timestamp`|
+|ISO_TIMESTAMP|UnixTimestamp|string|`unix-timestamp` AS PRIMARY TIMESTAMP|
 |EVENT_TYPE|EventType|string|`channel-event-type`|
-|REGION|ActorRegion|string|`region`|
+|REGION|ActorRegion|string|`region` AS PERSONAL|
+
 
 ## Outputs
  - ### Tabular
@@ -21,6 +24,4 @@
      - JSON
    - Members
      - Template name
-     - Internal name
-     - SQL Type
 

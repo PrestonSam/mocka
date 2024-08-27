@@ -18,7 +18,7 @@ fn mockagen() -> Result<GeneratorSet, crate::error::Error> {
 
 
 fn mockadoc() -> Result<(), crate::error::Error> {
-    let file = std::fs::read_to_string("debug_data/debug.mkd").unwrap();
+    let file = std::fs::read_to_string("debug_data/new-dbg.mkd").unwrap();
     let output = run_mockadoc(&file);
 
     // dbg!(output);

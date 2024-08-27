@@ -59,3 +59,29 @@ Nah let's separate the schema from the outputs and make everything both generic 
 I'm not _quite_ convinced by this syntax, but I think it's much closer to a good design than before.
 
 I think it's still worth putting special syntax for the headings of generator columns, so that it's a syntax error if you don't have a homogenous column type.
+
+
+
+I've just noticed that metadata isn't included in this spec.
+I think it should be appended onto the generators as the two are coupled to one another.
+
+I propose
+```md
+|Template name|Internal name|SQL Type|`Generator`|
+|---|---|---|---|
+|ISO_TIMESTAMP|UnixTimestamp|string|`unix-timestamp` AS PRIMARY TIMESTAMP|
+|EVENT_TYPE|EventType|string|`channel-event-type`|
+|REGION|ActorRegion|string|`region` AS PERSONAL|
+```
+
+If there are multiple tags, the syntax would be
+```md
+|`Generator name`|
+|---|
+|`some-generator` AS TAG1, TAG2, TAG3|
+```
+
+I'm not convinced that I should still be asking for the backticks in the column heading. I might take that out of the lang spec.
+
+Y'know what I'm taking it out of the lang spec
+

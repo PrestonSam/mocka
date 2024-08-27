@@ -1,6 +1,6 @@
 use pest::iterators::Pairs;
 
-use crate::{mockadoc::{packer::model::MetadataProperty, parser::Rule, MockadocError}, utils::{error::LanguageError, iterator::Transpose}};
+use crate::{mockadoc::{packer::model::{MetadataProperty, MockagenIdAndMeta}, parser::Rule, MockadocError}, utils::{error::LanguageError, iterator::Transpose}};
 
 use super::{error::{make_no_array_match_found_error, make_tree_shape_error}, model::{CellData, Column, ColumnHeading, Document, ImportStatement, MetadataProperties, MockadocFile, PackingError, PackingErrorVariant, PackingResult, SyntaxChildren, SyntaxToken, SyntaxTree}, utils::{vec_first_and_rest, vec_into_array_varied_length, FirstAndRest}};
 
@@ -21,16 +21,7 @@ fn parse_column_names(tree: SyntaxTree) -> Result<Vec<ColumnHeading>, PackingErr
             children.get_values_iter().map(|child| {
                 match (child.token.rule, child.token.providence, child.children) {
                     (Rule::TEXT, providence, _) =>
-                        Ok(ColumnHeading::Text(providence.as_trimmed_string())),
-
-                    (Rule::DATA_KEY, providence, _) =>
-                        Ok(ColumnHeading::DataKey(providence.as_string())),
-                    
-                    (Rule::METADATA_TAG, _, _) =>
-                        Ok(ColumnHeading::MetadataTag),
-                    
-                    (Rule::GENERATOR_TAG, _, _) =>
-                        Ok(ColumnHeading::GeneratorTag),
+                        Ok(ColumnHeading(providence.as_trimmed_string())),
 
                     (rule, providence, children) =>
                         make_tree_shape_error(SyntaxTree::from((rule, providence, children))),
@@ -71,18 +62,29 @@ fn parse_mockagen_identifier(tree: SyntaxTree) -> Result<String, PackingError> {
     }
 }
 
+fn parse_mockagen_id_and_metadata(trees: Vec<SyntaxTree>) -> Result<MockagenIdAndMeta, PackingError> {
+    match vec_into_array_varied_length(trees)? {
+        [ Some((Rule::mockagen_identifier, _, Some(SyntaxChildren::One(child))))
+        , Some((Rule::METADATA_PROPERTIES, _, Some(children)))
+        ] => {
+            let id = parse_mockagen_identifier(*child)?;
+            let metadata = parse_metadata_properties(children.get_values())
+                .map(MetadataProperties)?;
+
+            Ok(MockagenIdAndMeta(id, metadata))
+        },
+
+        nodes =>
+            make_no_array_match_found_error(nodes),
+    }
+}
+
 fn parse_data_cell(tree: SyntaxTree) -> Result<CellData, PackingError> {
     match (tree.token.rule, tree.token.providence, tree.children) {
-        (Rule::METADATA_PROPERTIES, _, Some(children)) =>
-            parse_metadata_properties(children.get_values())
-                .map(MetadataProperties)
-                .map(CellData::MetadataProperties)
-                .with_rule(Rule::METADATA_PROPERTIES),
-
-        (Rule::mockagen_identifier, _, Some(SyntaxChildren::One(child))) => 
-            parse_mockagen_identifier(*child)
-                .map(CellData::MockagenId)
-                .with_rule(Rule::mockagen_identifier),
+        (Rule::mockagen_id_and_metadata, _, Some(children)) =>
+            parse_mockagen_id_and_metadata(children.get_values())
+                .map(CellData::MockagenIdAndMeta)
+                .with_rule(Rule::mockagen_id_and_metadata),
 
         (Rule::TEXT, providence, _) =>
             Ok(CellData::Text(providence.as_trimmed_string())),
@@ -102,21 +104,6 @@ fn parse_data_row(tree: SyntaxTree) -> Result<Vec<CellData>, PackingError> {
 
         (rule, children) =>
             make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-    }
-}
-
-macro_rules! unpack_enum {
-    ($expression:expr, $pattern:pat => $value:expr) => {
-        match $expression {
-            $pattern => Some($value),
-            _ => None
-        }
-    };
-}
-
-macro_rules! unpack_enum_fn {
-    ($pattern:pat => $value:expr) => {
-        |cell| unpack_enum!(cell, $pattern => $value)
     }
 }
 
@@ -144,19 +131,94 @@ fn transpose_table(column_headings: Vec<ColumnHeading>, data_rows: Vec<Vec<CellD
 
     column_headings.into_iter()
         .zip(data_columns.enumerate())
-        .map(|(heading, (col_no, column))| {
-            match heading {
-                ColumnHeading::MetadataTag =>
-                    into_column(col_no, column, unpack_enum_fn!(CellData::MetadataProperties(props) => props), Column::Metadata),
-                
-                ColumnHeading::GeneratorTag =>
-                    into_column(col_no, column, unpack_enum_fn!(CellData::MockagenId(props) => props), Column::Generators),
-                
-                ColumnHeading::Text(title) =>
-                    into_column(col_no, column, unpack_enum_fn!(CellData::Text(props) => props), |data| Column::Text { title, data }),
-                
-                ColumnHeading::DataKey(title) =>
-                    into_column(col_no, column, unpack_enum_fn!(CellData::Text(props) => props), |data| Column::DataKey { title, data })
+        .map(|(heading, (column_number, column))| {
+
+            enum CellColumnData {
+                Text(Vec<String>),
+                MockagenIdAndMeta(Vec<MockagenIdAndMeta>),
+            }
+
+            impl CellColumnData {
+                fn new(cell_data: CellData) -> Self {
+                    match cell_data {
+                        CellData::MockagenIdAndMeta(id_and_metadata) =>
+                            Self::MockagenIdAndMeta(vec![ id_and_metadata ]),
+
+                        CellData::Text(text) =>
+                            Self::Text(vec![ text ]),
+                    }
+                }
+
+                fn append(self, cell_data: CellData) -> Option<Self> {
+                    match (self, cell_data) {
+                        (CellColumnData::MockagenIdAndMeta(mut ids_and_metadatas), CellData::MockagenIdAndMeta(id_and_metadata)) => {
+                            ids_and_metadatas.push(id_and_metadata);
+                            Some(CellColumnData::MockagenIdAndMeta(ids_and_metadatas))
+                        }
+
+                        (CellColumnData::Text(mut texts), CellData::Text(text)) => {
+                            texts.push(text);
+                            Some(CellColumnData::Text(texts))
+                        }
+                        
+                        _ => None
+                    }
+                }
+            }
+            
+            enum CellColumn {
+                Uninitialised,
+                Errored,
+                Valid(CellColumnData)
+            }
+
+            impl CellColumn {
+                fn new() -> Self {
+                    CellColumn::Uninitialised
+                }
+
+                fn append(self, cell_data: CellData) -> Self {
+                    match self {
+                        CellColumn::Valid(cell_column) =>
+                            cell_column.append(cell_data)
+                                .map(CellColumn::Valid)
+                                .unwrap_or(CellColumn::Errored),
+
+                        CellColumn::Uninitialised =>
+                            CellColumn::Valid(CellColumnData::new(cell_data)),
+
+                        CellColumn::Errored =>
+                            CellColumn::Errored,
+                    }
+                }
+            }
+
+            let cell_column = column.into_iter()
+                .enumerate()
+                .fold(Ok(CellColumn::new()), |cell_column, (row, cell)| {
+                    match cell_column?.append(cell) {
+                        CellColumn::Errored =>
+                            Err(PackingErrorVariant::InconsistentColumnTypes { column_number, row }),
+
+                        cell_column =>
+                            Ok(cell_column),
+                    }
+                })?;
+            
+            let ColumnHeading(title) = heading; 
+
+            match cell_column {
+                CellColumn::Valid(data) => {
+                    match data {
+                        CellColumnData::MockagenIdAndMeta(ids_and_metas) =>
+                            Ok(Column::MockagenIdAndMeta { title, data: ids_and_metas }),
+
+                        CellColumnData::Text(data) =>
+                            Ok(Column::Text { title, data })
+                    }
+                },
+                CellColumn::Errored => todo!("Produce error for this edgecase (should be impossible as these errors should already be propagated)"),
+                CellColumn::Uninitialised => todo!("Produce error complaining that there are no cells in this column")
             }
         })
         .collect::<Result<_, _>>()
