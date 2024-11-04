@@ -30,15 +30,69 @@ pub enum CellData {
 pub struct ColumnHeading(pub String);
 
 #[derive(Debug)]
-pub enum Column {
-    MockagenIdAndMeta { title: String, data: Vec<MockagenIdAndMeta> },
-    Text { title: String, data: Vec<String> },
+pub enum ColumnData {
+    Text(Vec<String>),
+    MockagenIdAndMeta(Vec<MockagenIdAndMeta>),
+}
+
+impl ColumnData {
+    pub fn new(cell_data: CellData) -> Self {
+        match cell_data {
+            CellData::MockagenIdAndMeta(id_and_metadata) =>
+                Self::MockagenIdAndMeta(vec![ id_and_metadata ]),
+
+            CellData::Text(text) =>
+                Self::Text(vec![ text ]),
+        }
+    }
+
+    pub fn append(self, cell_data: CellData) -> Option<Self> {
+        match (self, cell_data) {
+            (ColumnData::MockagenIdAndMeta(mut ids_and_metadatas)
+            , CellData::MockagenIdAndMeta(id_and_metadata)
+            ) => {
+                ids_and_metadatas.push(id_and_metadata);
+                Some(ColumnData::MockagenIdAndMeta(ids_and_metadatas))
+            }
+
+            (ColumnData::Text(mut texts)
+            , CellData::Text(text)
+            ) => {
+                texts.push(text);
+                Some(ColumnData::Text(texts))
+            }
+            
+            _ => None
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Column {
+    pub title: String,
+    pub data: ColumnData,
+}
+
+#[derive(Debug)]
+pub struct DocumentOutput;
+
+ #[derive(Debug)]
+pub struct TabularOutput;
+
+#[derive(Debug)]
+pub struct TabularFormats;
+
+#[derive(Debug)]
+pub enum OutputType {
+    Tabular(TabularOutput),
+    Document(DocumentOutput),
 }
 
 #[derive(Debug)]
 pub struct Document {
     pub title: String,
-    pub columns: Vec<Column>, // I think this should have "the" generator column.
+    pub columns: Vec<Column>,
+    pub outputs: Vec<OutputType>,
 }
 
 #[derive(Debug)]

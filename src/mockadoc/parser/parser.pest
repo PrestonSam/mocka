@@ -18,9 +18,9 @@ document = { title ~ NEWLINE+ ~ schema ~ NEWLINE+ ~ outputs }
 
 title = { "#" ~ TEXT ~ NEWLINE }
 
-schema_tag = { "## Schema" ~ NEWLINE }
+SCHEMA_TAG = _{ "## Schema" ~ NEWLINE }
 
-schema = { schema_tag ~ table }
+schema = { SCHEMA_TAG ~ table }
 
 
 ////////////
@@ -55,15 +55,11 @@ output_type = { output_tabular | output_document }
 
 output_tabular = { OUTPUT_TABULAR_TAG ~ output_tabular_formats ~ output_tabular_column_names ~ output_tabular_row_values }
 
-OUTPUT_TABULAR_TAG = _{
-    " - ### Tabular" ~ NEWLINE
-}
+OUTPUT_TABULAR_TAG = _{ " - ### Tabular" ~ NEWLINE }
 
 output_tabular_formats = { OUTPUT_TABULAR_FORMATS_TAG ~ output_tabular_format_type_indented+ }
 
-OUTPUT_TABULAR_FORMATS_TAG = _{
-    "    - Formats" ~ NEWLINE
-}
+OUTPUT_TABULAR_FORMATS_TAG = _{ "    - Formats" ~ NEWLINE }
 
 output_tabular_format_type_indented = { "        - " ~ output_tabular_format_type ~ NEWLINE }
 
@@ -73,22 +69,16 @@ output_tabular_column_names = { OUTPUT_TABULAR_COLUMN_NAMES_TAG ~ indented_x4_te
 
 
 
-OUTPUT_TABULAR_COLUMN_NAMES_TAG = _{
-    "    - Column names" ~ NEWLINE
-}
+OUTPUT_TABULAR_COLUMN_NAMES_TAG = _{ "    - Column names" ~ NEWLINE }
 
 output_tabular_row_values = { OUTPUT_TABULAR_ROW_VALUES_TAG ~ indented_x4_text+ }
 
-OUTPUT_TABULAR_ROW_VALUES_TAG = _{
-    "    - Row values" ~ NEWLINE
-}
+OUTPUT_TABULAR_ROW_VALUES_TAG = _{ "    - Row values" ~ NEWLINE }
 
 
 output_document = { OUTPUT_DOCUMENT_TAG ~ output_document_formats ~ output_document_members }
 
-OUTPUT_DOCUMENT_TAG = _{
-    " - ### Document" ~ NEWLINE
-}
+OUTPUT_DOCUMENT_TAG = _{ " - ### Document" ~ NEWLINE }
 
 output_document_formats = { OUTPUT_DOCUMENT_FORMATS_TAG ~ output_document_format_indented+ }
 
@@ -96,15 +86,11 @@ output_document_format_indented = { "        - " ~ output_document_format ~ NEWL
 
 output_document_format = { "JSON" }
 
-OUTPUT_DOCUMENT_FORMATS_TAG = _{
-    "   - Formats" ~ NEWLINE
-}
+OUTPUT_DOCUMENT_FORMATS_TAG = _{ "   - Formats" ~ NEWLINE }
 
 output_document_members = { OUTPUT_DOCUMENT_MEMBERS_TAG ~ indented_x4_text+ ~ NEWLINE }
 
-OUTPUT_DOCUMENT_MEMBERS_TAG = _{
-    "   - Members" ~ NEWLINE
-}
+OUTPUT_DOCUMENT_MEMBERS_TAG = _{ "   - Members" ~ NEWLINE }
 
 indented_x4_text = { "        - " ~ TEXT ~ NEWLINE }
 
@@ -112,7 +98,7 @@ indented_x4_text = { "        - " ~ TEXT ~ NEWLINE }
 /// TERMINALS
 ////////////////
 
-mockagen_id_and_metadata = { mockagen_identifier ~ "AS" ~ METADATA_PROPERTIES }
+mockagen_id_and_metadata = { mockagen_identifier ~ ("AS" ~ METADATA_PROPERTIES)? }
 
 METADATA_PROPERTIES =
     { PRIMARY_TIMESTAMP ~ "," ~ PERSONAL

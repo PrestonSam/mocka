@@ -10,21 +10,22 @@ use crate::{
 use super::model::{EvaluationError, OutDocument};
 
 fn evaluate_column(column: Column, generators: &GeneratorSet) -> Result<ColumnGenerator, EvaluationError> {
-    match column {
-        Column::Generators(gen_ids) =>
-            generators
-                .make_column_generator(gen_ids)
-                .map_err(EvaluationError::from),
+    todo!()
+    // match column {
+    //     Column::Generators(gen_ids) =>
+    //         generators
+    //             .make_column_generator(gen_ids)
+    //             .map_err(EvaluationError::from),
 
-        Column::Metadata(metadatas) =>
-            todo!("not quite sure how to do this yet"),
+    //     Column::Metadata(metadatas) =>
+    //         todo!("not quite sure how to do this yet"),
 
-        Column::Text { title, data } => // This shouldn't be part of the data generation
-            todo!(),
+    //     Column::Text { title, data } => // This shouldn't be part of the data generation
+    //         todo!(),
         
-        Column::DataKey { title, data } =>
-            todo!(),
-    }
+    //     Column::DataKey { title, data } =>
+    //         todo!(),
+    // }
 }
 
 fn evaluate_document(document: Document, generators: &GeneratorSet) -> Result<OutDocument, EvaluationError> {
@@ -69,34 +70,34 @@ pub fn evaluate_mockadoc(mockadoc_file: MockadocFile) -> Result<(), MockadocErro
 }
 
 
-fn get_debug_object() -> MockadocFile {
-    MockadocFile {
-        import_statement: ImportStatement(vec![ String::from("\"./debug.mkg\"") ]),
-        documents: vec![
-            Document {
-                title: String::from("Transaction"),
-                columns: vec![
-                    Column::Text {
-                        title: String::from("Template name"),
-                        data: vec![ String::from("Timestamp"), String::from("Name") ],
-                    },
-                    Column::Text {
-                        title: String::from("Internal name"),
-                        data: vec![ String::from("UnixTimestamp"), String::from("ActorName") ],
-                    },
-                    Column::Text {
-                        title: String::from("DSQL Type"),
-                        data: vec![ String::from("string"), String::from("string") ],
-                    },
-                    Column::Generators(vec![ String::from("unix-timestamp"), String::from("full-name") ]),
-                    Column::Metadata(
-                        vec![
-                            MetadataProperties(vec![MetadataProperty::PrimaryTimestamp]),
-                            MetadataProperties(vec![MetadataProperty::Personal]),
-                        ],
-                    ),
-                ],
-            },
-        ],
-    }
-}
+// fn get_debug_object() -> MockadocFile {
+//     MockadocFile {
+//         import_statement: ImportStatement(vec![ String::from("\"./debug.mkg\"") ]),
+//         documents: vec![
+//             Document {
+//                 title: String::from("Transaction"),
+//                 columns: vec![
+//                     Column::Text {
+//                         title: String::from("Template name"),
+//                         data: vec![ String::from("Timestamp"), String::from("Name") ],
+//                     },
+//                     Column::Text {
+//                         title: String::from("Internal name"),
+//                         data: vec![ String::from("UnixTimestamp"), String::from("ActorName") ],
+//                     },
+//                     Column::Text {
+//                         title: String::from("DSQL Type"),
+//                         data: vec![ String::from("string"), String::from("string") ],
+//                     },
+//                     Column::Generators(vec![ String::from("unix-timestamp"), String::from("full-name") ]),
+//                     Column::Metadata(
+//                         vec![
+//                             MetadataProperties(vec![MetadataProperty::PrimaryTimestamp]),
+//                             MetadataProperties(vec![MetadataProperty::Personal]),
+//                         ],
+//                     ),
+//                 ],
+//             },
+//         ],
+//     }
+// }
