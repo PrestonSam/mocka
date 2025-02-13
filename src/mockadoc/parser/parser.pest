@@ -38,8 +38,9 @@ table_divider = _{ ("|" ~ column_divider)+ ~ "|" }
 
 column_divider = @{ ":"? ~ "-"+ ~ ":"? }
 
-row = { ("|" ~ (mockagen_id_and_metadata | TEXT))+ ~ "|" ~ NEWLINE }
+row = { ("|" ~ row_value)+ ~ "|" ~ NEWLINE }
 
+row_value = { mockagen_id_and_metadata | TEXT }
 
 
 //////////////
@@ -63,7 +64,11 @@ OUTPUT_TABULAR_FORMATS_TAG = _{ "    - Formats" ~ NEWLINE }
 
 output_tabular_format_type_indented = { "        - " ~ output_tabular_format_type ~ NEWLINE }
 
-output_tabular_format_type = { "CSV" | "TSV" }
+output_tabular_format_type = { csv | tsv }
+
+csv = { "CSV" }
+
+tsv = { "TSV" }
 
 output_tabular_column_names = { OUTPUT_TABULAR_COLUMN_NAMES_TAG ~ indented_x4_text+ }
 
@@ -84,7 +89,9 @@ output_document_formats = { OUTPUT_DOCUMENT_FORMATS_TAG ~ output_document_format
 
 output_document_format_indented = { "        - " ~ output_document_format ~ NEWLINE }
 
-output_document_format = { "JSON" }
+output_document_format = { json }
+
+json = { "JSON" }
 
 OUTPUT_DOCUMENT_FORMATS_TAG = _{ "   - Formats" ~ NEWLINE }
 
@@ -101,10 +108,12 @@ indented_x4_text = { "        - " ~ TEXT ~ NEWLINE }
 mockagen_id_and_metadata = { mockagen_identifier ~ ("AS" ~ METADATA_PROPERTIES)? }
 
 METADATA_PROPERTIES =
-    { PRIMARY_TIMESTAMP ~ "," ~ PERSONAL
+    { primary_timestamp_and_personal
     | PRIMARY_TIMESTAMP
     | PERSONAL
     }
+
+primary_timestamp_and_personal = { PRIMARY_TIMESTAMP ~ "," ~ PERSONAL }
 
 PRIMARY_TIMESTAMP = { "PRIMARY TIMESTAMP" }
 

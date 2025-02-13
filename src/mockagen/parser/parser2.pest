@@ -1,0 +1,174 @@
+
+body = _{ SOI ~ NEWLINE* ~ include_statements? ~ statements ~ NEWLINE* ~ EOI }
+
+include_statements = { include_statement ~ NEWLINE+ }
+
+include_statement = { "INCLUDE" ~ STRING_LITERAL ~ ("," ~ STRING_LITERAL)* }
+
+statements = _{ definition ~ (NEWLINE+ ~ definition)* }
+
+definition =
+   { single_definition
+   | nested_definition
+   }
+
+single_definition =
+    { single_val_def
+    | multi_val_def
+    }
+
+single_val_def = { "DEF" ~ IDENTIFIER ~ "=" ~ value }
+
+multi_val_def = { "DEF" ~ IDENTIFIER ~ NEWLINE ~ PUSH(TAB) ~ "=" ~ value_set ~ DROP }
+
+nested_definition = { using_ids? ~ "DEF" ~ assign_ids ~ nested_clauses }
+
+
+using_ids = { "USING" ~ names }
+
+assign_ids = { names }
+
+names = _{ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
+
+
+nested_clauses =
+    { match_clauses_with_wildcard
+    | match_clauses
+    | assign_clauses
+    }
+
+// Wildcard must always be the final clause
+match_clauses_with_wildcard = { match_clauses ~ NEWLINE ~ wildcard_clause }
+
+match_clauses = { (NEWLINE ~ match_clause)+ }
+
+match_clause = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ matchers ~ nested_clauses ~ DROP }
+
+wildcard_clause = { PEEK_ALL ~ PUSH(TAB+) ~ "?" ~ any_value ~ nested_clauses ~ DROP }
+
+matchers =
+    { match_expr
+    | matcher_set
+    }
+
+matcher_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ match_expr)+ }
+
+// TODO implement support for other match expressions in future
+match_expr =
+    { literal_value
+    }
+
+assign_clauses = { (NEWLINE ~ assign_clause)+ }
+
+assign_clause = { PEEK_ALL ~ PUSH(TAB+) ~ "=" ~ weighted_values ~ assign_clauses? ~ DROP }
+
+weighted_values = { WEIGHT? ~ values }
+
+values =
+    { value
+    | value_set
+    }
+
+value_set = { "ONEOF" ~ (NEWLINE ~ PEEK_ALL ~ "|" ~ weighted_value)+ }
+
+
+weighted_value = { WEIGHT? ~ value }
+
+
+
+value =
+    { higher_order_value
+    | primitive_value
+    }
+
+higher_order_value =
+    { join_value
+    | identifier_value
+    }
+
+primitive_value =
+    { timestamp_date_value
+    | literal_value
+    | integer_value
+    | string_value
+    | real_value
+    // Assuming the following two are a bug
+    // | join_value
+    // | identifier_value
+    }
+
+timestamp_date_value = { "timestamp/date" ~ DATE_LITERAL ~ DATE_LITERAL }
+
+literal_value = { STRING_LITERAL }
+
+integer_value = { "integer" ~ INTEGER_LITERAL ~ INTEGER_LITERAL? }
+
+string_value = { "string" ~ INTEGER_LITERAL ~ INTEGER_LITERAL }
+
+real_value = { "real" ~ REAL_LITERAL ~ REAL_LITERAL? }
+
+join_value = { "join" ~ value+ }
+
+any_value = _{ "any" }
+
+identifier_value = { IDENTIFIER }
+
+
+PERCENTAGE_NUMBER = { ASCII_NONZERO_DIGIT ~ ASCII_DIGIT? }
+
+DECIMAL_SUFFIX =
+    { ASCII_NONZERO_DIGIT
+    | (ASCII_DIGIT ~ ASCII_NONZERO_DIGIT)
+    | (ASCII_NONZERO_DIGIT ~ "0")
+    }
+
+DECIMAL_PERCENTAGE_NUMBER =
+    { PERCENTAGE_NUMBER?
+    ~ "."
+    ~ DECIMAL_SUFFIX
+    }
+
+WEIGHTING =
+    { (PERCENTAGE_NUMBER ~ !".")
+    | DECIMAL_PERCENTAGE_NUMBER
+    }
+
+WEIGHT = ${ WEIGHTING ~ "%" }
+
+DATE_LITERAL = @{ ASCII_DIGIT{4} ~ "-" ~ ASCII_DIGIT{2} ~ "-" ~ ASCII_DIGIT{2} }
+
+REAL_LITERAL = @{ INTEGER_LITERAL ~ "." ~ ASCII_DIGIT+ }
+
+INTEGER_LITERAL = @{ "-"? ~ ASCII_DIGIT+ }
+
+SYNTAX_KEYWORDS =
+    { "INCLUDE"
+    | "ONEOF"
+    | "USING"
+    | "DEF"
+    }
+
+TYPE_KEYWORDS =
+    { "timestamp/date"
+    | "integer"
+    | "real"
+    | "string"
+    | "join"
+    | "any"
+    }
+
+RESERVED_WORDS = { SYNTAX_KEYWORDS | TYPE_KEYWORDS }
+
+IDENTIFIER = @{ !RESERVED_WORDS ~ (ASCII_ALPHA_LOWER | "-")+ }
+
+STRING_LITERAL = ${ "\"" ~ string_content ~ "\"" }
+string_content = @{ string_char* }
+string_char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+TAB = @{ " "{4} }
+
+WHITESPACE = _{ &!TAB ~ " " }

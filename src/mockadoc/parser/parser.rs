@@ -1,5 +1,6 @@
 use pest_derive::Parser;
 use pest::{iterators::Pairs, Parser};
+use token_packer::generic_utils::DropRules;
 
 use crate::mockadoc::model::MockadocError;
 
@@ -14,4 +15,10 @@ pub fn parse_mockadoc(code: &str) -> Result<Pairs<'_, Rule>, MockadocError> {
             println!("{}", &err.to_string());
             MockadocError::from(err)
         })
+}
+
+impl DropRules for Rule {
+    fn get_drop_rules(&self) -> Vec<Self> {
+        vec![ /* TODO drop rules */ ]
+    }
 }

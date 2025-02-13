@@ -1,13 +1,15 @@
 use std::fmt::Debug;
 
 use crate::utils::error::LanguageError;
+use super::{evaluator::model::EvaluationError, packer::model::PackingError, parser::{Rule, Rule2}};
 
-use super::{evaluator::model::EvaluationError, packer::model::PackingError, parser::Rule};
-
+pub type PackingError2
+    = token_packer::generic_utils::PackingError<Rule2>;
 
 #[derive(Debug)]
 pub enum MockagenErrorVariant {
     PackingError(PackingError),
+    PackingError2(PackingError2),
     ParsingError(Box<pest::error::Error<Rule>>),
     EvaluationError(EvaluationError),
 }
@@ -41,9 +43,23 @@ impl LanguageError for MockagenError {
     }
 }
 
+impl From<PackingError2> for MockagenError {
+    fn from(value: PackingError2) -> Self {
+        MockagenError {
+            error: MockagenErrorVariant::from(value),
+        }
+    }
+}
+
 impl From<PackingError> for MockagenErrorVariant {
     fn from(value: PackingError) -> Self {
         MockagenErrorVariant::PackingError(value)
+    }
+}
+
+impl From<PackingError2> for MockagenErrorVariant {
+    fn from(value: PackingError2) -> Self {
+        MockagenErrorVariant::PackingError2(value)
     }
 }
 

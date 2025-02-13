@@ -16,5 +16,7 @@ pest_derive = "2.7.8"
 serde = { version = "1.0.203", features = ["derive"] }
 
 lang_packer = { path = "../lang_packer"}
+token_packer = { path = "../token_packer" }
+
 rand = "0.8.5"
 
