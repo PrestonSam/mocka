@@ -1,59 +1,47 @@
 use std::fmt::Debug;
 
+use thiserror::Error;
+
 use crate::utils::error::LanguageError;
-use super::{evaluator::model::EvaluationError, packer::model::PackingError, parser::{Rule, Rule2}};
+use super::{evaluator::model::EvaluationError, parser::Rule};
 
 pub type PackingError2
-    = token_packer::generic_utils::PackingError<Rule2>;
+    = lang_packer_model::generic_utils::PackingError<Rule>;
 
 #[derive(Debug)]
 pub enum MockagenErrorVariant {
-    PackingError(PackingError),
     PackingError2(PackingError2),
     ParsingError(Box<pest::error::Error<Rule>>),
     EvaluationError(EvaluationError),
 }
 
-#[derive(Debug)]
-pub struct MockagenError { // It might be worth dropping the struct and only using MockagenErrorVariant
-    error: MockagenErrorVariant,
+#[derive(Error, Debug)]
+pub enum MockagenError { // It might be worth dropping the struct and only using MockagenErrorVariant
+    #[error("{0}")]
+    PackingError2(#[from] PackingError2),
+
+    #[error("{0}")]
+    ParsingError(#[from] Box<pest::error::Error<Rule>>),
+
+    #[error("{0}")]
+    EvaluationError(#[from] EvaluationError),
 }
 
 impl LanguageError for MockagenError {
     type Rule = Rule;
-    type PackingError = PackingError;
+    type PackingError = PackingError2;
     type EvaluationError = EvaluationError;
 
     fn from_parsing_err(error: pest::error::Error<Rule>) -> Self {
-        MockagenError {
-            error: MockagenErrorVariant::ParsingError(Box::from(error))
-        }
+        MockagenError::from(Box::from(error))
     }
 
-    fn from_packing_err(error: PackingError) -> Self {
-        MockagenError {
-            error: MockagenErrorVariant::PackingError(error)
-        }
+    fn from_packing_err(error: PackingError2) -> Self {
+        MockagenError::from(error)
     }
 
     fn from_eval_err(error: EvaluationError) -> Self {
-        MockagenError {
-            error: MockagenErrorVariant::EvaluationError(error)
-        }
-    }
-}
-
-impl From<PackingError2> for MockagenError {
-    fn from(value: PackingError2) -> Self {
-        MockagenError {
-            error: MockagenErrorVariant::from(value),
-        }
-    }
-}
-
-impl From<PackingError> for MockagenErrorVariant {
-    fn from(value: PackingError) -> Self {
-        MockagenErrorVariant::PackingError(value)
+        MockagenError::from(error)
     }
 }
 
@@ -74,3 +62,4 @@ impl From<EvaluationError> for MockagenErrorVariant {
         MockagenErrorVariant::EvaluationError(value)
     }
 }
+

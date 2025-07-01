@@ -1,6 +1,6 @@
 use pest_derive::Parser;
 use pest::{iterators::Pairs, Parser};
-use token_packer::generic_utils::DropRules;
+use lang_packer_model::generic_utils::DropRules;
 
 use crate::mockadoc::model::MockadocError;
 
@@ -13,7 +13,7 @@ pub fn parse_mockadoc(code: &str) -> Result<Pairs<'_, Rule>, MockadocError> {
     MockadocParser::parse(Rule::body, code)
         .map_err(|err| {
             println!("{}", &err.to_string());
-            MockadocError::from(err)
+            MockadocError::from(Box::from(err))
         })
 }
 

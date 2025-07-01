@@ -29,14 +29,17 @@ fn transpose_table(
         Ok(make_column(tags_by_row))
     }
 
+    // Arrange the data into columns
     let data_columns = data_rows.into_iter()
         .transpose()
         .map_err(PackingError::from)?;
 
+    // Zip the headings with their respective columns
     column_headings.into_iter()
         .zip(data_columns.enumerate())
         .map(|(heading, (column_number, column))| {
 
+            // Possible states of the column, to recognise if it's malformed
             enum ColumnPacker {
                 Uninitialised,
                 Errored,
@@ -48,6 +51,8 @@ fn transpose_table(
                     ColumnPacker::Uninitialised
                 }
 
+                // Incrementally assemble the column
+                // accepting each new cell if it's compliant with the column
                 fn append(self, cell_data: CellData) -> Self {
                     match self {
                         ColumnPacker::Valid(cell_column) =>
@@ -64,6 +69,7 @@ fn transpose_table(
                 }
             }
 
+            // This is folding the column, validating each cell in turn and producing
             let cell_column = column.into_iter()
                 .enumerate()
                 .fold(Ok(ColumnPacker::new()), |cell_column, (row, cell)| {
@@ -78,6 +84,7 @@ fn transpose_table(
             
             let ColumnHeading(title) = heading; 
 
+            // Unwrap or throw errors
             match cell_column {
                 ColumnPacker::Valid(data) => Ok(Column { title, data }),
                 ColumnPacker::Errored => todo!("Produce error for this edgecase (should be impossible as these errors should already be propagated)"),

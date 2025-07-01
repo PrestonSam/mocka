@@ -2,21 +2,23 @@
 /////////////////
 /// Entrypoint
 /////////////////
-body = _{ properties? ~ import_statement ~ documents ~ EOI }
+body = { properties? ~ import_statement ~ documents ~ EOI }
 
 properties = _{ SOI ~ "---" ~ NEWLINE ~ !"---"+ ~ NEWLINE ~ "---" ~ NEWLINE+ }
 
-import_statement = { "IMPORT" ~ path ~ ("," ~ path)* ~ NEWLINE+ }
+import_statement = { "IMPORT" ~ WS ~ path ~ ("," ~ " "+ ~ path)* ~ NEWLINE+ }
 
 path_char = { "_" | "." | "/" | 'a'..'z' | 'A'..'Z' | '0'..'9' }
 
-path = @{ "\"" ~ path_char+ ~ "\"" }
+path = ${ "\"" ~ path_chars ~ "\"" }
+
+path_chars = @{ path_char+ }
 
 documents = { document ~ (NEWLINE+ ~ document)* ~ NEWLINE* }
 
 document = { title ~ NEWLINE+ ~ schema ~ NEWLINE+ ~ outputs }
 
-title = { "#" ~ TEXT ~ NEWLINE }
+title = { "# " ~ TEXT ~ NEWLINE }
 
 SCHEMA_TAG = _{ "## Schema" ~ NEWLINE }
 
@@ -34,7 +36,7 @@ heading = { column_names ~ NEWLINE ~ table_divider ~ NEWLINE }
 
 column_names = { ("|" ~ TEXT)+ ~ "|" }
 
-table_divider = _{ ("|" ~ column_divider)+ ~ "|" }
+table_divider = { ("|" ~ column_divider)+ ~ "|" }
 
 column_divider = @{ ":"? ~ "-"+ ~ ":"? }
 
@@ -54,15 +56,19 @@ outputs = { OUTPUTS_TAG ~ output_type+ }
 output_type = { output_tabular | output_document }
 
 
-output_tabular = { OUTPUT_TABULAR_TAG ~ output_tabular_formats ~ output_tabular_column_names ~ output_tabular_row_values }
+output_tabular = { OUTPUT_TABULAR_TAG
+                 ~ output_tabular_formats
+                 ~ output_tabular_column_names
+                 ~ output_tabular_row_values
+                 }
 
-OUTPUT_TABULAR_TAG = _{ " - ### Tabular" ~ NEWLINE }
+OUTPUT_TABULAR_TAG = _{ "- ### Tabular" ~ NEWLINE }
 
 output_tabular_formats = { OUTPUT_TABULAR_FORMATS_TAG ~ output_tabular_format_type_indented+ }
 
-OUTPUT_TABULAR_FORMATS_TAG = _{ "    - Formats" ~ NEWLINE }
+OUTPUT_TABULAR_FORMATS_TAG = _{ TAB ~ "- Formats" ~ NEWLINE }
 
-output_tabular_format_type_indented = { "        - " ~ output_tabular_format_type ~ NEWLINE }
+output_tabular_format_type_indented = { TAB{2} ~ "- " ~ output_tabular_format_type ~ NEWLINE }
 
 output_tabular_format_type = { csv | tsv }
 
@@ -70,42 +76,42 @@ csv = { "CSV" }
 
 tsv = { "TSV" }
 
-output_tabular_column_names = { OUTPUT_TABULAR_COLUMN_NAMES_TAG ~ indented_x4_text+ }
+output_tabular_column_names = { OUTPUT_TABULAR_COLUMN_NAMES_TAG ~ indented_x2_text+ }
 
 
 
-OUTPUT_TABULAR_COLUMN_NAMES_TAG = _{ "    - Column names" ~ NEWLINE }
+OUTPUT_TABULAR_COLUMN_NAMES_TAG = _{ TAB ~ "- Column names" ~ NEWLINE }
 
-output_tabular_row_values = { OUTPUT_TABULAR_ROW_VALUES_TAG ~ indented_x4_text+ }
+output_tabular_row_values = { OUTPUT_TABULAR_ROW_VALUES_TAG ~ indented_x2_text+ }
 
-OUTPUT_TABULAR_ROW_VALUES_TAG = _{ "    - Row values" ~ NEWLINE }
+OUTPUT_TABULAR_ROW_VALUES_TAG = _{ TAB ~ "- Row values" ~ NEWLINE }
 
 
 output_document = { OUTPUT_DOCUMENT_TAG ~ output_document_formats ~ output_document_members }
 
-OUTPUT_DOCUMENT_TAG = _{ " - ### Document" ~ NEWLINE }
+OUTPUT_DOCUMENT_TAG = _{ "- ### Document" ~ NEWLINE }
 
 output_document_formats = { OUTPUT_DOCUMENT_FORMATS_TAG ~ output_document_format_indented+ }
 
-output_document_format_indented = { "        - " ~ output_document_format ~ NEWLINE }
+output_document_format_indented = { TAB{2} ~ "- " ~ output_document_format ~ NEWLINE }
 
 output_document_format = { json }
 
 json = { "JSON" }
 
-OUTPUT_DOCUMENT_FORMATS_TAG = _{ "   - Formats" ~ NEWLINE }
+OUTPUT_DOCUMENT_FORMATS_TAG = _{ TAB ~ "- Formats" ~ NEWLINE }
 
-output_document_members = { OUTPUT_DOCUMENT_MEMBERS_TAG ~ indented_x4_text+ ~ NEWLINE }
+output_document_members = { OUTPUT_DOCUMENT_MEMBERS_TAG ~ indented_x2_text+ ~ NEWLINE }
 
-OUTPUT_DOCUMENT_MEMBERS_TAG = _{ "   - Members" ~ NEWLINE }
+OUTPUT_DOCUMENT_MEMBERS_TAG = _{ TAB ~ "- Members" ~ NEWLINE }
 
-indented_x4_text = { "        - " ~ TEXT ~ NEWLINE }
+indented_x2_text = { TAB{2} ~ "- " ~ TEXT ~ NEWLINE }
 
 ////////////////
 /// TERMINALS
 ////////////////
 
-mockagen_id_and_metadata = { mockagen_identifier ~ ("AS" ~ METADATA_PROPERTIES)? }
+mockagen_id_and_metadata = { mockagen_identifier ~ (WS ~ "AS" ~ WS ~ METADATA_PROPERTIES)? }
 
 METADATA_PROPERTIES =
     { primary_timestamp_and_personal
@@ -121,10 +127,12 @@ PERSONAL = { "PERSONAL" }
 
 mockagen_identifier = ${ GENERATOR_MARKER ~ MOCKAGEN_IDENTIFIER ~ GENERATOR_MARKER }
 
-TEXT = @{ (ASCII_ALPHA | "_" | " ")+ }
+TEXT = @{ (&!NEWLINE ~ (ASCII_ALPHA | "_" | " "))+ }
 
 MOCKAGEN_IDENTIFIER = @{ (ASCII_ALPHA_LOWER | "-")+ }
 
 GENERATOR_MARKER = _{ "`" }
 
-WHITESPACE = _{ " " }
+TAB = _{ "  " }
+
+WS = _{ " "+ }

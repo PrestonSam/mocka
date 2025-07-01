@@ -1,18 +1,14 @@
-use self::{generators::make_definition_gens, model::DefGen};
-
-use super::packer::model::Statement;
+use crate::mockagen::{evaluator::{evaluator::{Evaluate}, model::Bindings, model::Result}, packer::packer::Body};
 
 mod generators;
+mod evaluator;
 pub mod model;
 
-pub fn evaluate_mockagen(statements: Vec<Statement>) -> Vec<DefGen> {
-    statements.into_iter()
-        .flat_map(|statement| {
-            match statement {
-                Statement::Include(_) => todo!("Logic for loading files"),
-                Statement::Definition(definition) => {
-                    make_definition_gens(definition)
-                }
-            }
-        }).collect()
+pub fn evaluate_mockagen(body: Body) -> Result<Bindings> {
+    let Body(maybe_includes, definitions, _) = body;
+
+    // TODO handle includes
+
+    definitions.into_iter()
+        .try_fold(Bindings::new(), |bindings, def| def.evaluate(bindings))
 }

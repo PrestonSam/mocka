@@ -23,7 +23,7 @@ IMPORT "event-types.mkg"
 
 ### Transaction
 
-| Template name | Internal name | DSQL Type | _GENERATOR_      | _METADATA_        |
+| Template name | Internal name | DSQL Type | Generator        | Metadata          |
 | ------------- | ------------- | --------- | ---------------- | ----------------- |
 | Timestamp     | UnixTimestamp | string    | `unix-timestamp` | PRIMARY TIMESTAMP |
 | Name          | ActorName     | string    | `full-name`      | PERSONAL          |
@@ -93,12 +93,13 @@ DEF full-name = join surname "," first-name
 ### Mockagen
 - [x] Parser (inc. tokeniser)
 - [x] AST builder
-- [x] Evaluation
-    - [x] Design interface
-    - [x] Implement evaluator
+- [ ] Evaluation (currently being re-written)
 
 ### Mockadoc
 - [x] Parser (inc. tokeniser)
 - [x] AST builder
-- [ ] Evaluation
+- [ ] Evaluation (on hold until mockagen is rewritten)
 
+## Building
+
+This project depends upon the `lang_packer` library.

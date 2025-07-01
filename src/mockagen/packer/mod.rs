@@ -1,18 +1,16 @@
-pub mod model;
-mod packer;
-mod packer2;
+pub mod packer;
 
-pub use packer::pack_mockagen;
-use packer2::Body;
+use packer::Body;
 use pest::iterators::Pairs;
-use token_packer::{generic_utils::SyntaxTree, pack_trees::{unpack_only_tree, TokenPacker}};
+use lang_packer_model::{generic_utils::SyntaxTree, pack_trees::{unpack_only_tree, TokenPacker}};
 
-use super::{parser::Rule2, MockagenError};
+use super::{parser::Rule, MockagenError};
 
-pub fn pack_mockagen2(pairs: Pairs<'_, Rule2>) -> Result<Body, MockagenError> {
-    let trees = pairs.map(SyntaxTree::<'_, Rule2>::from).collect();
+pub fn pack_mockagen(pairs: Pairs<'_, Rule>) -> Result<Body, MockagenError> {
+    let trees: Vec<_> = pairs.map(SyntaxTree::from)
+        .collect();
 
-    unpack_only_tree(trees)
+    unpack_only_tree(&trees)
         .and_then(Body::pack)
         .map_err(MockagenError::from)
 }

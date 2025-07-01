@@ -1,389 +1,377 @@
-use pest::iterators::Pairs;
+#![allow(dead_code)]
 
-use crate::{
-    mockadoc::{
-        packer::model::{ColumnData, MetadataProperty, MockagenIdAndMeta},
-        parser::Rule, MockadocError
-    },
-    utils::{error::LanguageError, iterator::Transpose}
-};
+use std::marker::PhantomData;
 
-use super::{
-    error::{make_no_array_match_found_error, make_tree_shape_error},
-    model::{
-        CellData, Column, ColumnHeading, Document, ImportStatement, MetadataProperties, MockadocFile, OutputType, PackingError,
-        PackingErrorVariant, PackingResult, SyntaxChildren, SyntaxToken, SyntaxTree, TabularFormats, TabularOutput
-    },
-    utils::{vec_first_and_rest, vec_into_array_varied_length, FirstAndRest}
-};
+use lang_packer::Packer;
 
-fn parse_title(trees: Vec<SyntaxTree>) -> Result<String, PackingError> {
-    match vec_into_array_varied_length(trees)? {
-        [ Some((Rule::TEXT, providence, None))
-        ] =>
-            Ok(providence.as_trimmed_string()),
+use crate::mockadoc::parser::Rule;
 
-        nodes =>
-            make_no_array_match_found_error(nodes),
-    }
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::PERSONAL)]
+pub struct Personal;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::PRIMARY_TIMESTAMP)]
+pub struct PrimaryTimestamp;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::primary_timestamp_and_personal)]
+pub struct PrimaryTimestampAndPersonal(pub PrimaryTimestamp, pub Personal);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::METADATA_PROPERTIES)]
+pub enum MetadataProperties {
+    PrimaryTimestampAndPersonal(PrimaryTimestampAndPersonal),
+    PrimaryTimestamp(PrimaryTimestamp),
+    Personal(Personal),
 }
 
-fn parse_column_names(tree: SyntaxTree) -> Result<Vec<ColumnHeading>, PackingError> {
-    match (tree.token.rule, tree.children) {
-        (Rule::column_names, Some(children)) =>
-            children.get_values_iter().map(|child| {
-                match (child.token.rule, child.token.providence, child.children) {
-                    (Rule::TEXT, providence, _) =>
-                        Ok(ColumnHeading(providence.as_trimmed_string())),
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::MOCKAGEN_IDENTIFIER)]
+pub struct MockagenId(pub String);
 
-                    (rule, providence, children) =>
-                        make_tree_shape_error(SyntaxTree::from((rule, providence, children))),
-                }
-            })
-            .collect::<Result<_, _>>()
-            .with_rule(Rule::column_names),
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::mockagen_identifier)]
+pub struct MockagenIdentifier(pub MockagenId);
 
-        (rule, children) =>
-            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-    }
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::mockagen_id_and_metadata)]
+pub struct MockagenIdAndMetadata(pub MockagenIdentifier, pub Option<MetadataProperties>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::row_value)]
+pub enum RowValue {
+    MockagenIdAndMetadata(MockagenIdAndMetadata),
+    Text(Text),
 }
 
-fn parse_metadata_properties(trees: Vec<SyntaxTree>) -> Result<Vec<MetadataProperty>, PackingError> {
-    trees.into_iter()
-        .map(|tree| {
-            match (tree.token.rule, tree.children) {
-                (Rule::PRIMARY_TIMESTAMP, _) =>
-                    Ok(MetadataProperty::PrimaryTimestamp),
-                
-                (Rule::PERSONAL, _) =>
-                    Ok(MetadataProperty::Personal),
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::TEXT)]
+pub struct Text(pub String);
 
-                (rule, children) =>
-                    make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-            }
-        })
-        .collect()
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::indented_x2_text)]
+pub struct IndentedX4Text(pub Text);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_document_members)]
+pub struct DocumentMembers(pub Vec<IndentedX4Text>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::json)]
+pub struct Json;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_document_format)]
+pub enum DocumentFormat {
+    Json(Json),
 }
 
-fn parse_mockagen_identifier(tree: SyntaxTree) -> Result<String, PackingError> {
-    match (tree.token.rule, tree.token.providence, tree.children) {
-        (Rule::MOCKAGEN_IDENTIFIER, providence, _) =>
-            Ok(providence.as_string()),
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_document_format_indented)]
+pub struct DocumentFormatIndented(pub DocumentFormat);
 
-        (rule, providence, children) =>
-            make_tree_shape_error(SyntaxTree::from((rule, providence, children))),
-    }
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_document_formats)]
+pub struct DocumentFormats(pub Vec<DocumentFormatIndented>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_document)]
+pub struct OutputDocument(pub DocumentFormats, pub DocumentMembers);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_tabular_row_values)]
+pub struct TabularRowValues(pub Vec<IndentedX4Text>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_tabular_column_names)]
+pub struct TabularColumnNames(pub Vec<IndentedX4Text>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::csv)]
+pub struct Csv;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::tsv)]
+pub struct Tsv;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_tabular_format_type)]
+pub enum OutputTabularFormatType {
+    Csv(Csv),
+    Tsv(Tsv),
 }
 
-fn parse_mockagen_id_and_metadata(trees: Vec<SyntaxTree>) -> Result<MockagenIdAndMeta, PackingError> {
-    match vec_into_array_varied_length(trees)? {
-        [ Some((Rule::mockagen_identifier, _, Some(SyntaxChildren::One(child))))
-        , Some((Rule::METADATA_PROPERTIES, _, Some(children)))
-        ] => {
-            let id = parse_mockagen_identifier(*child)?;
-            let metadata = parse_metadata_properties(children.get_values())
-                .map(MetadataProperties)?;
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_tabular_format_type_indented)]
+pub struct TabularFormatTypeIndented(pub OutputTabularFormatType);
 
-            Ok(MockagenIdAndMeta(id, metadata))
-        },
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_tabular_formats)]
+pub struct TabularFormats(pub Vec<TabularFormatTypeIndented>);
 
-        nodes =>
-            make_no_array_match_found_error(nodes),
-    }
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_tabular)]
+pub struct OutputTabular(pub TabularFormats, pub TabularColumnNames, pub TabularRowValues);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::output_type)]
+pub enum OutputType {
+    Tabular(OutputTabular),
+    Document(OutputDocument),
 }
 
-fn parse_data_cell(tree: SyntaxTree) -> Result<CellData, PackingError> {
-    match (tree.token.rule, tree.token.providence, tree.children) {
-        (Rule::mockagen_id_and_metadata, _, Some(children)) =>
-            parse_mockagen_id_and_metadata(children.get_values())
-                .map(CellData::MockagenIdAndMeta)
-                .with_rule(Rule::mockagen_id_and_metadata),
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::outputs)]
+pub struct Outputs(pub Vec<OutputType>);
 
-        (Rule::TEXT, providence, _) =>
-            Ok(CellData::Text(providence.as_trimmed_string())),
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::row)]
+pub struct Row(pub Vec<RowValue>);
 
-        (rule, providence, children) =>
-            make_tree_shape_error(SyntaxTree::from((rule, providence, children))),
-    }
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::column_names)]
+pub struct ColumnNames(pub Vec<Text>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::column_divider)]
+pub struct ColumnDivider;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::table_divider)]
+pub struct TableDivider(Vec<ColumnDivider>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::heading)]
+pub struct Heading(pub ColumnNames, pub TableDivider);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::table)]
+pub struct Table(pub Heading, pub Vec<Row>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::schema)]
+pub struct Schema(pub Table);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::title)]
+pub struct Title(pub Text);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::document)]
+pub struct Document(pub Title, pub Schema, pub Outputs);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::documents)]
+pub struct Documents(pub Vec<Document>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::path_chars)]
+pub struct PathChars(pub String);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::path)]
+pub struct Path(pub PathChars);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::import_statement)]
+pub struct ImportStatement(pub Vec<Path>);
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::properties)]
+pub struct Properties;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::EOI)]
+pub struct EOI;
+
+#[derive(Debug, Packer)]
+#[packer(rule = Rule::body)]
+pub struct Body(pub Option<Properties>, pub ImportStatement, pub Documents, pub EOI);
+
+
+
+
+
+
+// At the moment the purpose of this is just to grab the type.
+// I might be able to merge it with CollectVariantIter, which I believe has enough overlap
+
+// This is attached to RowValue
+pub trait HasVariantIters {
+    type VariantIters<I>: CollectItersByVariant<I>
+    where
+        I: Iterator<Item = Self> + Sized,
+        I::Item: HasVariantIters;
 }
 
-fn parse_data_row(tree: SyntaxTree) -> Result<Vec<CellData>, PackingError> {
-    match (tree.token.rule, tree.children) {
-        (Rule::row, Some(children)) =>
-            children.get_values_iter()
-                .map(parse_data_cell)
-                .collect::<Result<_, _>>()
-                .with_rule(Rule::row),
-
-        (rule, children) =>
-            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-    }
+// See? I told you so
+impl HasVariantIters for RowValue {
+    type VariantIters<I> = RowValueCollectedItersByVariant<I>
+    where
+        I: Iterator<Item = Self> + Sized;
 }
 
-fn transpose_table(
-        column_headings: Vec<ColumnHeading>,
-        data_rows: Vec<Vec<CellData>>
-    ) -> Result<Vec<Column>, PackingError>
+// This is an interface for the outputted enum returned after you call collect_variant on an iterator
+pub trait CollectItersByVariant<I>
+where
+    I: Iterator<Item: HasVariantIters> + Sized
 {
-    fn into_column<T>(
-        column_number: usize,
-        column: Vec<CellData>,
-        get_props: fn(CellData) -> Option<T>,
-        make_column: impl FnOnce(Vec<T>) -> Column
-    ) -> Result<Column, PackingErrorVariant> {
-
-        let tags_by_row = column.into_iter()
-            .enumerate()
-            .map(|(row, cell)|
-                get_props(cell)
-                    .ok_or_else(|| PackingErrorVariant::InconsistentColumnTypes { column_number, row }))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(make_column(tags_by_row))
-    }
-
-    let data_columns = data_rows.into_iter()
-        .transpose()
-        .map_err(PackingError::from)?;
-
-    column_headings.into_iter()
-        .zip(data_columns.enumerate())
-        .map(|(heading, (column_number, column))| {
-
-            enum ColumnPacker {
-                Uninitialised,
-                Errored,
-                Valid(ColumnData)
-            }
-
-            impl ColumnPacker {
-                fn new() -> Self {
-                    ColumnPacker::Uninitialised
-                }
-
-                fn append(self, cell_data: CellData) -> Self {
-                    match self {
-                        ColumnPacker::Valid(cell_column) =>
-                            cell_column.append(cell_data)
-                                .map(ColumnPacker::Valid)
-                                .unwrap_or(ColumnPacker::Errored),
-
-                        ColumnPacker::Uninitialised =>
-                            ColumnPacker::Valid(ColumnData::new(cell_data)),
-
-                        ColumnPacker::Errored =>
-                            ColumnPacker::Errored,
-                    }
-                }
-            }
-
-            let cell_column = column.into_iter()
-                .enumerate()
-                .fold(Ok(ColumnPacker::new()), |cell_column, (row, cell)| {
-                    match cell_column?.append(cell) {
-                        ColumnPacker::Errored =>
-                            Err(PackingErrorVariant::InconsistentColumnTypes { column_number, row }),
-
-                        cell_column =>
-                            Ok(cell_column),
-                    }
-                })?;
-            
-            let ColumnHeading(title) = heading; 
-
-            match cell_column {
-                ColumnPacker::Valid(data) => Ok(Column { title, data }),
-                ColumnPacker::Errored => todo!("Produce error for this edgecase (should be impossible as these errors should already be propagated)"),
-                ColumnPacker::Uninitialised => todo!("Produce error complaining that there are no cells in this column")
-            }
-        })
-        .collect::<Result<_, _>>()
-        .map_err(PackingError::new)
+    fn new(src: I, first: I::Item) -> Self;
 }
 
-fn parse_table(trees: Vec<SyntaxTree>) -> Result<Vec<Column>, PackingError> {
-    match vec_first_and_rest(trees) {
-        FirstAndRest::Both(
-            SyntaxTree {
-                token: SyntaxToken { rule: Rule::heading, providence },
-                children: Some(SyntaxChildren::One(column_names))
-            },
-            data_rows
-        ) => {
-            let column_headings = parse_column_names(*column_names)
-                .with_rule(Rule::heading)?;
-            let data_rows: Vec<_> = data_rows.into_iter()
-                .map(parse_data_row)
-                .collect::<Result<_, _>>()?;
+// This is an implementation of CollectItersByVariant
+pub enum RowValueCollectedItersByVariant<I>
+where
+    I: Iterator<Item = RowValue> + Sized,
+{
+    MockagenIdAndMetadata(CollectedVariantIter<I, MockagenIdAndMetadata>),
+    Text(CollectedVariantIter<I, Text>),
+}
 
-            transpose_table(column_headings, data_rows)
-                .map_err(|err| err.with_providence(providence))
-        }
-
-        FirstAndRest::OnlyFirst(_) =>
-            todo!("Produce error: 'only header but no data'"),
-
-        FirstAndRest::Neither =>
-            todo!("Produce error: 'no header nor data'"),
-
-        v => {
-            dbg!(&v);
-            todo!("Produce error: 'Unexpected value'")
+// There. I told you so
+impl<I> CollectItersByVariant<I> for RowValueCollectedItersByVariant<I>
+where
+    I: Iterator<Item = RowValue> + Sized,
+{
+    fn new(src: I, first: I::Item) -> Self
+    {
+        match &first {
+            RowValue::MockagenIdAndMetadata(_) => Self::MockagenIdAndMetadata(CollectedVariantIter::new(src, first)),
+            RowValue::Text(_) => Self::Text(CollectedVariantIter::new(src, first)),
         }
     }
 }
 
-fn parse_schema(trees: Vec<SyntaxTree>) -> Result<Vec<Column>, PackingError> {
-    match vec_into_array_varied_length(trees)? {
-        [ Some((Rule::SCHEMA_TAG, _, None))
-        , Some((Rule::table, _, Some(SyntaxChildren::Many(table_children))))
-        ] =>
-            parse_table(table_children).with_rule(Rule::table),
-
-        nodes =>
-            make_no_array_match_found_error(nodes),
-    }
+// This is an error that's produced when a value is discovered to be of the wrong variant
+#[derive(Debug)]
+pub enum CollectVariantError {
+    InconsistentEnumVariants,
 }
 
+// This consumes the enum (RowValue) and produces the value under the variant.
+// This is basically "UnwrapEnumVariant"
+pub trait TryGetVariant
+where
+    Self: Sized
+{
+    type Enum;
 
-
-fn parse_output_tabular_formats(trees: Vec<SyntaxTree>) -> Result<TabularFormats, PackingError> {
-
-
-    match vec_first_and_rest(trees) {
-        FirstAndRest::Both(SyntaxTree { token: SyntaxToken { rule: Rule::OUTPUT_TABULAR_FORMATS_TAG, .. }, ..  }, output_types) => {
-
-                // output_tabular_format_type_indented
-                todo!()
-        }
-        _ => unimplemented!()
-    }
+    fn try_from_variant(from: Self::Enum) -> Option<Self>;
 }
 
-fn parse_output_tabular(trees: Vec<SyntaxTree>) -> Result<TabularOutput, PackingError> {
-    match vec_into_array_varied_length(trees)? {
-        [ Some((Rule::OUTPUT_TABULAR_TAG, _, _))
-        , Some((Rule::output_tabular_formats, _, Some(formats_children)))
-        , Some((Rule::output_tabular_column_names, _, Some(column_names_children)))
-        , Some((Rule::output_tabular_row_values, _, Some(row_values_children)))
-        ] => {
-            let formats = parse_output_tabular_formats(formats_children.get_values())?;
-            // let column_names = parse_output_tabular_column_names(column_names_children.get_values())?;
-            // let row_values = parse_output_tabular_row_values(row_values_children.get_values())?;
+// Here I implement the trait for MockagenIdAndMetadata
+impl TryGetVariant for MockagenIdAndMetadata {
+    type Enum = RowValue;
 
-            Ok(TabularOutput)
-        }
-
-        nodes =>
-            make_no_array_match_found_error(nodes),
-    }
-}
-
-fn parse_output_type(tree: SyntaxTree) -> Result<OutputType, PackingError> {
-    match (tree.token.rule, tree.children) {
-        (Rule::output_type, Some(SyntaxChildren::One(child))) => {
-            match (child.token.rule, child.children) {
-                (Rule::output_tabular, Some(children)) =>
-                    parse_output_tabular(children.get_values()).map(OutputType::Tabular),
-
-                (Rule::output_document, Some(children)) =>
-                    todo!(),
-                    // parse_output_document(children.get_values()).map(OutputType::Document),
-
-                (rule, children) =>
-                    make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-            }
-        }
-
-        (rule, children) =>
-            make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-
-    }
-}
-
-fn parse_outputs(trees: Vec<SyntaxTree>) -> Result<Vec<OutputType>, PackingError> {
-    match vec_first_and_rest(trees) {
-        FirstAndRest::Both(SyntaxTree { token: SyntaxToken { rule: Rule::OUTPUTS_TAG, .. }, ..  }, output_types) =>
-            output_types.into_iter()
-                .map(parse_output_type)
-                .collect(),
-
-        FirstAndRest::OnlyFirst(_) =>
-            todo!("Produce error: 'only tag but no output types'"),
-
-        FirstAndRest::Neither =>
-            todo!("Produce error: 'no output types nor tag'"),
-
-        v => {
-            dbg!(&v);
-            todo!("Produce error: 'Unexpected value'")
+    fn try_from_variant(from: Self::Enum) -> Option<Self> {
+        match from {
+            RowValue::MockagenIdAndMetadata(mockagen_id_and_metadata) => Some(mockagen_id_and_metadata),
+            RowValue::Text(_) => None,
         }
     }
 }
 
-fn parse_document(trees: Vec<SyntaxTree>) -> Result<Document, PackingError> {
-    match vec_into_array_varied_length(trees)? {
-        [ Some((Rule::title, _, Some(title_children)))
-        , Some((Rule::schema, _, Some(SyntaxChildren::Many(schema_children))))
-        , Some((Rule::outputs, _, Some(SyntaxChildren::Many(outputs_children))))
-        ] => {
-            let title = parse_title(title_children.get_values()).with_rule(Rule::title)?;
-            let columns = parse_schema(schema_children).with_rule(Rule::schema)?;
-            let outputs = parse_outputs(outputs_children).with_rule(Rule::outputs)?;
+// And here I implement the trait for Text
+impl TryGetVariant for Text {
+    type Enum = RowValue;
 
-            Ok(Document { title, columns, outputs })
+    fn try_from_variant(from: Self::Enum) -> Option<Self> {
+        match from {
+            RowValue::Text(text) => Some(text),
+            RowValue::MockagenIdAndMetadata(_) => None,
         }
-
-        nodes =>
-            make_no_array_match_found_error(nodes),
     }
 }
 
-fn parse_documents(trees: Vec<SyntaxTree>) -> Result<Vec<Document>, PackingError> {
-    trees.into_iter()
-        .map(|tree| {
-            match (tree.token.rule, tree.children) {
-                (Rule::document, Some(children)) =>
-                    parse_document(children.get_values())
-                        .with_rule(Rule::document),
-
-                (rule, children) =>
-                    make_tree_shape_error(SyntaxTree::from((rule, tree.token.providence, children))),
-            }
-        })
-        .collect::<Result<_, _>>()
+// This is the state for the iterator that produces either the extracted enum or the error we visited earlier
+pub struct CollectedVariantIter<I, V>
+where
+    I: Iterator + Sized,
+    I::Item: HasVariantIters,
+    V: TryGetVariant<Enum = I::Item>
+{
+    src: I,
+    first: Option<I::Item>,
+    _phantom: PhantomData<V>,
 }
 
-// TODO maybe put some validation in here? I'm not sure
-fn parse_import_statement(trees: Vec<SyntaxTree>) -> ImportStatement {
-    let imports = trees.into_iter()
-        .map(|path| path.as_string())
-        .collect();
-
-    ImportStatement(imports)
-}
-
-fn parse_entrypoint(trees: Vec<SyntaxTree>) -> Result<MockadocFile, PackingError> {
-    match vec_into_array_varied_length(trees)? {
-        [ Some((Rule::import_statement, _, Some(import_children)))
-        , Some((Rule::documents, _, Some(document_children)))
-        , Some((Rule::EOI, _, None))
-        ] => {
-            let import_statement = parse_import_statement(import_children.get_values());
-            let documents = parse_documents(document_children.get_values())
-                .with_rule(Rule::documents)?;
-
-            Ok(MockadocFile { import_statement, documents })
+// Here's a `new` function for the sake of convenience
+impl<I, V> CollectedVariantIter<I, V>
+where
+    I: Iterator + Sized,
+    I::Item: HasVariantIters,
+    V: TryGetVariant<Enum = I::Item>
+{
+    fn new(src: I, first: I::Item) -> Self {
+        CollectedVariantIter {
+            src,
+            first: Some(first),
+            _phantom: PhantomData
         }
-
-        nodes =>
-            make_no_array_match_found_error(nodes),
     }
 }
 
-pub fn pack_mockadoc(pairs: Pairs<'_, Rule>) -> Result<MockadocFile, MockadocError> {
-    let trees = pairs.map(SyntaxTree::from).collect();
+// Here's the implementation of iterator for that state struct
+impl<I, V> Iterator for CollectedVariantIter<I, V> 
+where
+    I: Iterator + Sized,
+    I::Item: HasVariantIters,
+    V: TryGetVariant<Enum = I::Item>,
+{
+    type Item = Result<V, CollectVariantError>;
 
-    parse_entrypoint(trees)
-        .map_err(MockadocError::from_packing_err)
+    fn next(&mut self) -> Option<Self::Item> {
+        let first = &mut self.first; // Broke this out onto two lines to evade a bug in rust-analyzer
+        let next = first.take()
+            .or_else(|| self.src.next())?;
+
+        let variant = V::try_from_variant(next)
+            .ok_or(CollectVariantError::InconsistentEnumVariants);
+
+        Some(variant)
+    }
+}
+
+// This is the trait that adds `collect_variant` to any iterator whose Item implements `HasVariantIters`
+pub trait CollectVariant
+where
+    Self: Iterator + Sized,
+    Self::Item: HasVariantIters,
+{
+    fn collect_variant(mut self) -> Option<<Self::Item as HasVariantIters>::VariantIters<Self>> {
+        let fst = self.next()?;
+
+        let out = <Self::Item as HasVariantIters>::VariantIters::new(self, fst);
+
+        Some(out)
+    }
+}
+
+// Here's the boilerplate to automatically bind the trait to all iterators matching the criteria
+impl<I> CollectVariant for I
+where
+    I: Iterator + Sized,
+    I::Item: HasVariantIters,
+{}
+
+#[test]
+fn test_collect_variant() {
+    let vals = vec![
+        RowValue::Text(Text("Soem text".into())),
+        RowValue::Text(Text("Other text".into())),
+        RowValue::Text(Text("Final text".into())),
+        // RowValue::MockagenIdAndMetadata(MockagenIdAndMetadata(MockagenIdentifier(MockagenId("SomeId".into())), None)),
+    ];
+
+    let variant_iter = vals.into_iter().collect_variant().unwrap();
+
+    match variant_iter {
+        RowValueCollectedItersByVariant::MockagenIdAndMetadata(mockagen_id_and_metadata_iter) => {
+            dbg!(mockagen_id_and_metadata_iter.collect::<Result<Vec<_>, _>>().unwrap());
+        },
+        RowValueCollectedItersByVariant::Text(text_iter) => {
+            dbg!(text_iter.collect::<Result<Vec<_>, _>>().unwrap());
+        },
+    };
 }

@@ -1,4 +1,8 @@
-use crate::{mockadoc::parser::Rule, utils::{iterator::TransposeError, packing::SkipRules}};
+#![allow(dead_code)]
+
+use thiserror::Error;
+
+use crate::{mockadoc::{packer::MockagenIdAndMetadata, parser::Rule}, utils::{iterator::LegacyTransposeError, packing::SkipRules}};
 
 impl SkipRules for Rule {
     type Rule = Rule;
@@ -8,23 +12,23 @@ impl SkipRules for Rule {
     }
 }
 
-#[derive(Debug)]
-pub enum MetadataProperty {
-    PrimaryTimestamp,
-    Personal,
-}
+// #[derive(Debug)]
+// pub enum MetadataProperty {
+//     PrimaryTimestamp,
+//     Personal,
+// }
 
-#[derive(Debug)]
-pub struct MetadataProperties(pub Vec<MetadataProperty>);
+// #[derive(Debug)]
+// pub struct MetadataProperties(pub Vec<MetadataProperty>);
 
-#[derive(Debug)]
-pub struct MockagenIdAndMeta(pub String, pub MetadataProperties);
+// #[derive(Debug)]
+// pub struct MockagenIdAndMeta(pub String, pub MetadataProperties);
 
-#[derive(Debug)]
-pub enum CellData {
-    MockagenIdAndMeta(MockagenIdAndMeta),
-    Text(String),
-}
+// #[derive(Debug)]
+// pub enum CellData {
+//     MockagenIdAndMeta(MockagenIdAndMeta),
+//     Text(String),
+// }
 
 #[derive(Debug, Clone)]
 pub struct ColumnHeading(pub String);
@@ -32,44 +36,44 @@ pub struct ColumnHeading(pub String);
 #[derive(Debug)]
 pub enum ColumnData {
     Text(Vec<String>),
-    MockagenIdAndMeta(Vec<MockagenIdAndMeta>),
+    MockagenIdAndMetadata(Vec<MockagenIdAndMetadata>),
 }
 
-impl ColumnData {
-    pub fn new(cell_data: CellData) -> Self {
-        match cell_data {
-            CellData::MockagenIdAndMeta(id_and_metadata) =>
-                Self::MockagenIdAndMeta(vec![ id_and_metadata ]),
+// impl ColumnData {
+//     pub fn new(cell_data: CellData) -> Self {
+//         match cell_data {
+//             CellData::MockagenIdAndMeta(id_and_metadata) =>
+//                 Self::MockagenIdAndMetadata(vec![ id_and_metadata ]),
 
-            CellData::Text(text) =>
-                Self::Text(vec![ text ]),
-        }
-    }
+//             CellData::Text(text) =>
+//                 Self::Text(vec![ text ]),
+//         }
+//     }
 
-    pub fn append(self, cell_data: CellData) -> Option<Self> {
-        match (self, cell_data) {
-            (ColumnData::MockagenIdAndMeta(mut ids_and_metadatas)
-            , CellData::MockagenIdAndMeta(id_and_metadata)
-            ) => {
-                ids_and_metadatas.push(id_and_metadata);
-                Some(ColumnData::MockagenIdAndMeta(ids_and_metadatas))
-            }
+//     pub fn append(self, cell_data: CellData) -> Option<Self> {
+//         match (self, cell_data) {
+//             (ColumnData::MockagenIdAndMetadata(mut ids_and_metadatas)
+//             , CellData::MockagenIdAndMeta(id_and_metadata)
+//             ) => {
+//                 ids_and_metadatas.push(id_and_metadata);
+//                 Some(ColumnData::MockagenIdAndMetadata(ids_and_metadatas))
+//             }
 
-            (ColumnData::Text(mut texts)
-            , CellData::Text(text)
-            ) => {
-                texts.push(text);
-                Some(ColumnData::Text(texts))
-            }
+//             (ColumnData::Text(mut texts)
+//             , CellData::Text(text)
+//             ) => {
+//                 texts.push(text);
+//                 Some(ColumnData::Text(texts))
+//             }
             
-            _ => None
-        }
-    }
-}
+//             _ => None
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 pub struct Column {
-    pub title: String,
+    pub heading: String,
     pub data: ColumnData,
 }
 
@@ -105,21 +109,32 @@ pub struct MockadocFile {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum PackingErrorVariant {
+    #[error("Unhandled tree shape")]
     SyntaxUnhandledTreeShape(String),
+
+    #[error("SyntaxChildrenArrayCastError")]
     SyntaxChildrenArrayCastError(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
+
+    #[error("SyntaxNodeCountMismatch")]
     SyntaxNodeCountMismatch(Vec<Option<(Rule, String, Option<String>)>>), // TODO This could probably use a type alias
+    
+    #[error("InconsistentColumnTypes")]
     InconsistentColumnTypes { column_number: usize, row: usize },
+
+    #[error("TableHasNoRows")]
     TableHasNoRows { column_heading: String },
-    InconsistentTableRowWidths(TransposeError)
+
+    #[error("InconsistentTableRowWidths")]
+    InconsistentTableRowWidths(LegacyTransposeError)
 }
 
 pub type PackingError =
     crate::utils::packing::PackingError<PackingErrorVariant, Rule>;
 
-impl From<TransposeError> for PackingError {
-    fn from(value: TransposeError) -> Self {
+impl From<LegacyTransposeError> for PackingError {
+    fn from(value: LegacyTransposeError) -> Self {
         PackingError::new(PackingErrorVariant::InconsistentTableRowWidths(value))
     }
 }

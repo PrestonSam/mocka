@@ -1,33 +1,37 @@
+use thiserror::Error;
+
 use crate::{
-    mockagen::{ColumnGenerator, MockagenError, OutValue},
-    utils::iterator::{Transpose, TransposeError}
+    mockagen::{MockagenError, OutValue},
+    utils::iterator::{LegacyTransposeError, Transpose, TransposeError}
 };
 
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum EvaluationError {
-    MockagenError(MockagenError),
-    FileReadError(std::io::Error),
-    DocumentShapeError(TransposeError)
-}
+    #[error("{0}")]
+    MockagenError(#[from] MockagenError),
 
-impl From<MockagenError> for EvaluationError {
-    fn from(value: MockagenError) -> Self {
-        EvaluationError::MockagenError(value)
-    }
+    #[error("mockagen import file read error")]
+    FileReadError(#[from] std::io::Error),
+
+    #[error("malformed table")]
+    TableShapeError(#[from] TransposeError),
+
+    #[error("legacy")]
+    LegacyDocumentShapeError(LegacyTransposeError)
 }
 
 pub struct OutRow(pub Vec<OutValue>);
 
 pub struct OutDocument<'a>(pub Vec<ColumnGenerator<'a>>);
 
-impl<'a> OutDocument<'a> {
+impl OutDocument<'_> {
     pub fn generate(&self) -> Result<Vec<OutRow>, EvaluationError> {
         let output = self.0.iter()
             .map(|col_gen| col_gen.generate_column())
             .collect::<Result<Vec<_>, _>>().map_err(EvaluationError::from)?
             .into_iter()
-            .transpose().map_err(EvaluationError::DocumentShapeError)?
+            .transpose().map_err(EvaluationError::TableShapeError)?
             .map(OutRow)
             .collect();
 

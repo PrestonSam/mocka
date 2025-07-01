@@ -1,4 +1,4 @@
-IMPORT "./debug.mkg"
+IMPORT "./debug_data/debug.mkg"
 
 # Channel
 
@@ -11,17 +11,17 @@ IMPORT "./debug.mkg"
 
 
 ## Outputs
- - ### Tabular
-    - Formats
-        - TSV
-        - CSV
-    - Column names
-        - Template name
-    - Row values
-        - Generator
- - ### Document
-   - Formats
-     - JSON
-   - Members
-     - Template name
+- ### Tabular
+  - Formats
+    - TSV
+    - CSV
+  - Column names
+    - Template name
+  - Row values
+    - Generator
+- ### Document
+  - Formats
+    - JSON
+  - Members
+    - Template name
 

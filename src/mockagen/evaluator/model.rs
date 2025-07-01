@@ -1,19 +1,94 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::rc::Rc;
 
 use chrono::NaiveDate;
-use indexmap::IndexMap;
 use serde::{Serialize, Serializer};
+use thiserror::Error;
 
-use crate::mockagen::model::MockagenError;
-use crate::mockagen::packer::model::{NestedAssignNode, TerminalAssignNode, WeightedValue};
-use crate::utils::error::LanguageError;
+use crate::mockagen::evaluator::generators::{Generator2, GeneratorEnum};
+use crate::mockagen::packer::packer::{Value, WeightedValue};
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum EvaluationError {
-    MissingIdentifier(String),
-    MissingIdentifiers(Vec<String>),
-    NoMatchBranchForValue(OutValue),
+    #[error("duplicate identifier")]
+    DuplicateIdentifier(String),
+
+    #[error("unbound identifier")]
+    UnboundIdentifier(String),
+}
+
+pub type Result<T> = std::result::Result<T, EvaluationError>;
+
+
+#[derive(Default)]
+pub struct Bindings(HashMap<String, Rc<GeneratorEnum>>);
+
+impl Bindings {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, id: String, gen: GeneratorEnum) -> Result<Rc<GeneratorEnum>> {
+        let value = Rc::new(gen);
+
+        if !self.0.contains_key(&id) {
+            self.0.insert(id, value.clone()).unwrap();
+            Ok(value)
+        } else {
+            Err(EvaluationError::DuplicateIdentifier(id))
+        }
+    }
+
+    pub fn get(&self, id: &str) -> Result<Rc<GeneratorEnum>> {
+        self.0.get(id)
+            .map(Rc::to_owned)
+            .ok_or_else(|| EvaluationError::UnboundIdentifier(id.to_owned()))
+    }
+}
+
+#[derive(Default)]
+pub struct Scope(HashMap<String, Rc<OutValue>>);
+
+impl Scope {
+    fn get_value(&self, id: &str) -> Option<Rc<OutValue>> {
+        self.0.get(id).map(Rc::to_owned)
+    }
+
+    fn set_value(&mut self, id: &str, value: OutValue) -> Result<Rc<OutValue>> {
+        let value = Rc::new(value);
+
+        match self.0.insert(id.to_owned(), value.clone()) {
+            Some(_) => Err(EvaluationError::DuplicateIdentifier(id.to_owned())),
+            None => Ok(value),
+        }
+    }
+}
+
+// TODO I suspect that Bindings should be AsRef instead of owned.
+// Actually better idea, let's assemble context from Bindings, then dismantle it into Bindings later
+pub struct Context(Bindings, Scope);
+
+impl Context {
+    fn new(bindings: Bindings) -> Self {
+        Self(bindings, Default::default())
+    }
+
+    pub fn bindings(&self) -> &Bindings {
+        &self.0
+    }
+
+    pub fn get_value(&mut self, id: &str) -> Result<Rc<OutValue>> {
+        match self.1.get_value(id) {
+            Some(scoped_value) => Ok(scoped_value),
+            None => {
+                let binding = self.0.get(id)?;
+                let value = binding.generate_value(self)?;
+
+                self.1.set_value(id, value)
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -24,9 +99,20 @@ pub enum OutValue {
     NaiveDate(NaiveDate),
 }
 
+impl std::fmt::Display for OutValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutValue::String(v) => f.write_str(v),
+            OutValue::I64(v) => f.write_fmt(format_args!("{v}")),
+            OutValue::F64(v) => f.write_fmt(format_args!("{v}")),
+            OutValue::NaiveDate(v) => f.write_fmt(format_args!("{}", &v.format("%Y-%m-%d"))),
+        }
+    }
+}
+
 
 impl Serialize for OutValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer
     {
@@ -39,161 +125,16 @@ impl Serialize for OutValue {
     }
 }
 
-impl ToString for OutValue {
-    fn to_string(&self) -> String {
-        match self {
-            Self::String(str) => str.to_string(),
-            Self::I64(i64) => i64.to_string(),
-            Self::F64(f64) => f64.to_string(),
-            Self::NaiveDate(date) => date.to_string(), // TODO Might want to check what this one looks like 
-        }
-    }
-}
-
-pub type ValueContext<'a>
-    = IndexMap<&'a str, OutValue>;
-
-pub type Generator
-    = Box<dyn Fn(&ValueContext) -> Result<OutValue, MockagenError>>;
-
-pub struct DefGen {
-    pub id: String,
-    pub gen: Generator,
-    pub dependencies: Vec<String>,
-}
-
-impl Debug for DefGen {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DefGen")
-            .field("id", &self.id)
-            .field("dependencies", &self.dependencies)
-            .finish()
-    }
-}
-
-#[derive(Debug)]
-struct SelectedDefGen<'a> {
-    is_dependency: bool,
-    def_gen: &'a DefGen,
-}
-
-#[derive(Debug)]
-pub struct ColumnGenerator<'a> {
-    gens: Vec<SelectedDefGen<'a>>
-}
-
-impl<'a> ColumnGenerator<'a> {
-    pub fn generate_column(&self) -> Result<Vec<OutValue>, MockagenError> {
-        self.gens.iter()
-            // TODO instead of producing a vector of booleans, produce a vector of the values you plan to return. This will save you a lot of time
-            .fold(Ok((ValueContext::new(), vec![])), |idx_map_rslt, SelectedDefGen { is_dependency, def_gen }| {
-                let (mut idx_map, mut dependency_tracker) = idx_map_rslt?;
-
-                let out_val = (def_gen.gen)(&idx_map)?;
-
-                idx_map.insert(&def_gen.id, out_val);
-                dependency_tracker.push(*is_dependency);
-
-                Ok((idx_map, dependency_tracker))
-            })
-            .map(|(idx_map, dep_tracker)|
-                idx_map.into_values()
-                    .zip(dep_tracker)
-                    .filter(|(_, is_dep)| !(is_dep))
-                    .map(|(gen, _)| gen)
-                    .collect()
-            )
-    }  
-}
-
-#[derive(Debug)]
-pub struct GeneratorSet {
-    def_gens: HashMap<String, DefGen>,
-}
-
-impl GeneratorSet {
-    pub fn new(def_gens: Vec<DefGen>) -> Self {
-        let map = def_gens.into_iter()
-            .map(|def_gen| (def_gen.id.clone(), def_gen))
-            .collect::<HashMap<_, _>>();
-
-        GeneratorSet { def_gens: map }
-    }
-
-    pub fn merge(&mut self, other: GeneratorSet) {
-        self.def_gens.extend(other.def_gens.into_iter())
-    }
-
-
-    pub fn make_column_generator<'a>(&'a self, ids: Vec<String>) -> Result<ColumnGenerator<'a>, MockagenError> {
-        type GenResult<'a>
-            = Result<Vec<SelectedDefGen<'a>>, Vec<String>>;
-
-        fn select_gens<'a, 'b>(gen_set: &'a GeneratorSet, is_dependency: bool, gen_result: GenResult<'a>, id: &'b str) -> GenResult<'a> {
-            match gen_result {
-                Ok(mut selected_gens) => 
-                    match gen_set.def_gens.get(id) {
-                        Some(gen) => {
-                            let selected_gen = SelectedDefGen { is_dependency, def_gen: gen };
-                            selected_gens.push(selected_gen);
-
-                            gen.dependencies.iter()
-                                .fold(
-                                    Ok(selected_gens),
-                                    |folded_gens, id| select_gens(gen_set, true, folded_gens, id)
-                                )
-                        },
-
-                        None =>
-                            Err(vec![ id.to_string() ]),
-                    },
-
-                Err(mut errored_gens) =>
-                    if gen_set.def_gens.contains_key(id) {
-                        Err(errored_gens)
-                    } else {
-                        errored_gens.push(id.to_string());
-                        Err(errored_gens)
-                    }
-            }
-        }
-
-        ids.iter()
-            .fold(Ok(vec![]), |folded_gens, id| select_gens(self, false, folded_gens, id))
-            .map(|selected_gens| ColumnGenerator { gens: selected_gens })
-            .map_err(EvaluationError::MissingIdentifiers)
-            .map_err(MockagenError::from_eval_err)
-    }
-}
-
 pub struct MaybeWeighted<T> {
     pub weight: Option<f64>,
     pub value: T
 }
 
-impl From<WeightedValue> for MaybeWeighted<WeightedValue> {
+impl From<WeightedValue> for MaybeWeighted<Value> {
     fn from(value: WeightedValue) -> Self {
         MaybeWeighted {
-            weight: value.weight,
-            value,
-        }
-    }
-}
-
-impl From<NestedAssignNode> for MaybeWeighted<NestedAssignNode> {
-    fn from(value: NestedAssignNode) -> Self {
-        MaybeWeighted {
-            weight: value.weight,
-            value,
-        }
-    }
-}
-
-impl From<TerminalAssignNode> for MaybeWeighted<TerminalAssignNode> {
-    fn from(value: TerminalAssignNode) -> Self {
-        MaybeWeighted {
-            weight: value.weight,
-            value,
+            weight: value.0.map(|w| w.get()),
+            value: value.1,
         }
     }
 }
@@ -201,4 +142,13 @@ impl From<TerminalAssignNode> for MaybeWeighted<TerminalAssignNode> {
 pub struct WeightedT<T> {
     pub weight: f64,
     pub value: T
+}
+
+impl<T> WeightedT<T> {
+    pub fn new(maybe_weighted: MaybeWeighted<T>, implicit_weight: f64) -> Self {
+        WeightedT {
+            weight: maybe_weighted.weight.unwrap_or(implicit_weight),
+            value: maybe_weighted.value,
+        }
+    }
 }

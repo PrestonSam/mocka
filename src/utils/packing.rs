@@ -1,5 +1,6 @@
 use std::{fmt::Debug, iter::once};
 use pest::{iterators::Pair, RuleType, Span};
+use thiserror::Error;
 
 
 #[derive(Clone)]
@@ -8,7 +9,7 @@ pub struct Providence<'a> {
     pub src: &'a str,
 }
 
-impl<'a> Providence<'a> {
+impl Providence<'_> {
     pub fn as_string(&self) -> String {
         self.src.to_string()
     }
@@ -26,7 +27,7 @@ fn trunc(str: &str, len: usize) -> String {
     }
 }
 
-impl<'a> core::fmt::Debug for Providence<'a> {
+impl core::fmt::Debug for Providence<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (line, column) = self.span.start_pos().line_col();
 
@@ -41,7 +42,7 @@ enum PackingErrorContext<Rule> {
     Rule(Rule),
 }
 
-#[derive(Debug) ]
+#[derive(Debug, Error) ]
 pub struct PackingError<Variant, Rule> {
     error: Variant,
     context: Vec<PackingErrorContext<Rule>>,
@@ -79,7 +80,7 @@ pub struct SyntaxToken<'a, Rule> {
     pub providence: Providence<'a>,
 }
 
-impl<'a, Rule> SyntaxToken<'a, Rule> {
+impl<Rule> SyntaxToken<'_, Rule> {
     pub fn as_string(&self) -> String {
         self.providence.src.to_string()
     }
@@ -91,7 +92,7 @@ pub struct SyntaxTree<'a, Rule> {
     pub children: Option<SyntaxChildren<'a, Rule>>,
 }
 
-impl<'a, Rule> SyntaxTree<'a, Rule> {
+impl<Rule> SyntaxTree<'_, Rule> {
     pub fn as_string(&self) -> String {
         self.token.as_string()
     }
@@ -116,7 +117,7 @@ impl<'a, Rule> SyntaxChildren<'a, Rule> {
     }
 }
 
-impl<'a, Rule> Debug for SyntaxChildren<'a, Rule>
+impl<Rule> Debug for SyntaxChildren<'_, Rule>
 where Rule: Debug + Copy
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -181,7 +182,7 @@ impl<'a, Rule> From<(Rule, Providence<'a>, Option<SyntaxChildren<'a, Rule>>)> fo
     }
 }
 
-impl<'a, Rule> Debug for SyntaxTree<'a, Rule>
+impl<Rule> Debug for SyntaxTree<'_, Rule>
 where Rule: Debug + Copy
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

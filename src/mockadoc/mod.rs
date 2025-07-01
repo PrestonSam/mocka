@@ -1,6 +1,6 @@
 use packer::pack;
 
-use crate::mockadoc::parser::parse_mockadoc;
+use crate::mockadoc::{evaluator::evaluator2::evaluate_mockadoc, parser::parse_mockadoc};
 
 pub use self::model::MockadocError;
 
@@ -13,11 +13,11 @@ mod utils;
 
 pub fn run_mockadoc(code: &str) -> Result<(), MockadocError> {
     let pairs = parse_mockadoc(code)?;
-    dbg!(&pairs);
-    let packed = pack(pairs).expect("Pack error");
-    dbg!(&packed);
-    // let evaluation = evaluate_mockadoc(packed)?;
-    // dbg!(&evaluation);
+    // dbg!(&pairs);
+    let packed = pack(pairs).map_err(MockadocError::PackingError2)?;
+    // dbg!(&packed);
+    let evaluation = evaluate_mockadoc(packed)?;
+    dbg!(&evaluation);
 
     todo!()
 }   

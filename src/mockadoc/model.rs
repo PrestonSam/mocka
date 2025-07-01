@@ -1,32 +1,26 @@
+use thiserror::Error;
+
 use crate::{mockagen::MockagenError, utils::error::LanguageError};
 
 use super::{evaluator::model::EvaluationError, packer::model::PackingError, parser::Rule};
 
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MockadocError {
-    ParsingError(Box<pest::error::Error<Rule>>),
+    #[error("failed to parse mockadoc file")]
+    ParsingError(#[from] Box<pest::error::Error<Rule>>),
+
+    #[error("failed to pack mockadoc file")]
     PackingError(PackingError),
-    EvaluationError(EvaluationError),
+
+    // #[error("failed to pack mockadoc file")]
+    #[error("{0}")]
+    PackingError2(#[from] lang_packer_model::generic_utils::PackingError<Rule>),
+
+    #[error("{0}")]
+    EvaluationError(#[from] EvaluationError),
 }
 
-impl From<pest::error::Error<Rule>> for MockadocError {
-    fn from(value: pest::error::Error<Rule>) -> Self {
-        MockadocError::ParsingError(Box::from(value))
-    }
-}
-
-impl From<std::io::Error> for MockadocError {
-    fn from(value: std::io::Error) -> Self {
-        MockadocError::EvaluationError(EvaluationError::FileReadError(value))
-    }
-}
-
-impl From<MockagenError> for MockadocError {
-    fn from(value: MockagenError) -> Self {
-        MockadocError::EvaluationError(EvaluationError::MockagenError(value))
-    }
-}
 
 impl LanguageError for MockadocError {
     type Rule = Rule;
