@@ -1,3 +1,5 @@
+use std::{ptr::read, rc::Rc};
+
 use chrono::{Duration, NaiveDate};
 use itertools::Itertools;
 use rand::{
@@ -5,12 +7,12 @@ use rand::{
     thread_rng, Rng,
 };
 
-use crate::mockagen::{
-    evaluator::model::{Context, Result},
+use crate::{mockagen::{
+    evaluator::model::{Context, CumulWeightedGen, EvaluationError, Result},
     packer::packer::{
-        DateLiteral, HigherOrderValue, Identifier, IdentifierValue, IntegerLiteral, IntegerValue, JoinValue, LiteralValue, PrimitiveValue, RealLiteral, RealValue, StringContent, StringLiteral, StringValue, TimestampDateValue, Value, ValueSet, WeightedValue
+        AssignClause, AssignClauses, DateLiteral, HigherOrderValue, Identifier, IdentifierValue, IntegerLiteral, IntegerValue, JoinValue, LiteralValue, MatchClause, MatchClauses, MatchExpr, MatcherSet, Matchers, NestedClauses, PrimitiveValue, RealLiteral, RealValue, StringContent, StringLiteral, StringValue, TimestampDateValue, Value, ValueSet, Values, WeightedValue, WeightedValues, WildcardClause
     }
-};
+}, utils::iterator::FindOk};
 
 use super::model::{MaybeWeighted, OutValue, WeightedT};
 
@@ -18,6 +20,7 @@ pub trait Generator2 {
     fn generate_value(&self, ctxt: &mut Context) -> Result<OutValue>;
 }
 
+#[derive(Debug)]
 pub struct DateRangeGen { after: NaiveDate, range_in_days: i64 }
 
 impl DateRangeGen {
@@ -37,6 +40,7 @@ impl Generator2 for DateRangeGen {
     }
 }
 
+#[derive(Debug)]
 pub struct IntegerRangeGen { from: i64, to: i64 }
 
 impl IntegerRangeGen {
@@ -55,6 +59,7 @@ impl Generator2 for IntegerRangeGen {
     }
 }
 
+#[derive(Debug)]
 pub struct RealRangeGen { from: f64, to: f64 }
 
 impl RealRangeGen {
@@ -73,6 +78,7 @@ impl Generator2 for RealRangeGen {
     }
 }
 
+#[derive(Debug)]
 pub struct StringRangeGen { from: i64, to: i64 }
 
 impl StringRangeGen {
@@ -89,6 +95,7 @@ impl Generator2 for StringRangeGen {
     }
 }
 
+#[derive(Debug)]
 pub struct LiteralGen(String);
 
 impl LiteralGen {
@@ -103,6 +110,7 @@ impl Generator2 for LiteralGen {
     }
 }
 
+#[derive(Debug)]
 pub struct IdentifierGen(String);
 
 impl IdentifierGen {
@@ -119,6 +127,7 @@ impl Generator2 for IdentifierGen {
     }
 }
 
+#[derive(Debug)]
 pub struct JoinGen(Vec<GeneratorEnum>);
 
 impl JoinGen {
@@ -143,46 +152,48 @@ impl Generator2 for JoinGen {
     }
 }
 
+#[derive(Debug)]
 pub struct AlternationGen {
-    first: WeightedT<GeneratorEnum>,
-    rest: Vec<WeightedT<GeneratorEnum>>
-}
-
-fn get_implicit_weighting<T>(maybe_weighteds: &[MaybeWeighted<T>]) -> f64 {
-    let mut total_explicit_percentage = 0.0;
-    let mut implicit_percentage_count = 0.0;
-
-    for maybe_weighted in maybe_weighteds {
-        match maybe_weighted.weight {
-            Some(weight) => total_explicit_percentage += weight,
-            None => implicit_percentage_count += 1.0,
-        }
-    }
-
-    (100.0 - total_explicit_percentage) / implicit_percentage_count
+    wgens: Vec<CumulWeightedGen>,
+    last: CumulWeightedGen,
 }
 
 impl AlternationGen {
-    fn new(weighted_values: Vec<WeightedValue>) -> Self {
-        let maybe_weighteds = weighted_values.into_iter().map(MaybeWeighted::from).collect_vec();
-        let implicit_weighting = get_implicit_weighting(maybe_weighteds.as_slice());
+    fn new(maybe_weighteds: Vec<MaybeWeighted<GeneratorEnum>>) -> Self {
+        let implicit_weighting = Self::get_implicit_weighting(maybe_weighteds.as_slice());
         let mut explicit_weighted = maybe_weighteds.into_iter()
-            .map(|w| WeightedT::new(w, implicit_weighting));
+            .map(|w| WeightedT::new(w, implicit_weighting))
+            .rev();
 
-        let WeightedT { weight: fst_weight, value: fst_value } = explicit_weighted.next().expect("Should have at least one value"); // TODO real error handling
-        let first = WeightedT { weight: fst_weight, value: GeneratorEnum::from(fst_value) };
-        let rest = explicit_weighted
-            .scan(fst_weight, |cumul_weight, WeightedT { weight, value }| {
+        let WeightedT { value: last_value, .. } = explicit_weighted.next()
+            .expect("Should have at least one value"); // TODO real error handling
+
+        let others = explicit_weighted
+            .scan(0.0, |cumul_weight, WeightedT { weight, value }| {
                 *cumul_weight += weight;
 
-                Some(WeightedT {
-                    weight: *cumul_weight,
-                    value: GeneratorEnum::from(value)
-                })
+                Some(CumulWeightedGen { cumul_weight: *cumul_weight, value })
             })
             .collect();
 
-        Self { first, rest }
+        Self {
+            wgens: others,
+            last: CumulWeightedGen { cumul_weight: 100.0, value: last_value }
+        }
+    }
+
+    fn get_implicit_weighting<T>(maybe_weighteds: &[MaybeWeighted<T>]) -> f64 {
+        let mut total_explicit_percentage = 0.0;
+        let mut implicit_percentage_count = 0.0;
+
+        for maybe_weighted in maybe_weighteds {
+            match maybe_weighted.weight {
+                Some(weight) => total_explicit_percentage += weight,
+                None => implicit_percentage_count += 1.0,
+            }
+        }
+
+        (100.0 - total_explicit_percentage) / implicit_percentage_count
     }
 }
 
@@ -190,15 +201,179 @@ impl Generator2 for AlternationGen {
     fn generate_value(&self, ctxt: &mut Context) -> Result<OutValue> {
         let target_weighting = thread_rng().gen_range(0.0..=100.0);
 
-        self.rest.iter()
-            .rev()
-            .find(|WeightedT { weight, .. }| *weight < target_weighting)
-            .unwrap_or(&self.first)
+        self.wgens.iter()
+            .find(|CumulWeightedGen { cumul_weight, .. }| target_weighting < *cumul_weight)
+            .unwrap_or(&self.last)
             .value
             .generate_value(ctxt)
     }
 }
 
+
+#[derive(Debug)]
+pub enum ValueTree {
+    Match(Vec<MatchArm>, Option<Box<ValueTree>>),
+    Assign(Vec<AssignArm>, GeneratorEnum),
+}
+
+#[derive(Debug)]
+struct MatchArm {
+    match_conditions: MatchConditions,
+    children: ValueTree,
+}
+
+impl MatchArm {
+    fn new(clause: MatchClause, ids: &[&str]) -> Result<Self> {
+        let MatchClause(_, matchers, nested_clauses) = clause;
+
+        Ok(Self {
+            match_conditions: MatchConditions::from_matchers(ids[0], matchers),
+            children: ValueTree::from_nested_clauses(&ids[1..], nested_clauses)?,
+        })
+    }
+
+    pub fn is_match(&self, ctxt: &mut Context) -> Result<bool> {
+        self.match_conditions.is_match(ctxt)
+    }
+}
+
+#[derive(Debug)]
+struct MatchConditions {
+    id: String,
+    matchers: Vec<MatchExpr>
+}
+
+impl MatchConditions {
+    fn from_matchers(id: &str, matchers: Matchers) -> Self {
+        let matchers = match matchers {
+            Matchers::MatchExpr(match_expr) => vec![ match_expr, ],
+            Matchers::MatcherSet(MatcherSet(match_exprs)) => match_exprs,
+        };
+
+        Self { id: id.to_owned(), matchers }
+    }
+
+    fn from_match_exprs(id: &str, match_exprs: Vec<MatchExpr>) -> Self {
+        Self { id: id.to_owned(), matchers: match_exprs }
+    }
+
+    pub fn is_match(&self, ctxt: &mut Context) -> Result<bool> {
+        let value = ctxt.get_value(self.id.as_str())?;
+
+        Ok(self.matchers.iter().any(|m| m.is_match(value.as_ref())))
+    }
+}
+
+#[derive(Debug)]
+struct AssignArm {
+    match_conditions: MatchConditions,
+    children: Option<ValueTree>
+}
+
+impl AssignArm {
+    pub fn new(id: &str, weighted_values: &WeightedValues, children: Option<ValueTree>) -> Result<Self> {
+        let match_exprs = weighted_values.1.iter()
+            .map(MatchExpr::try_from)
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Self {
+            match_conditions: MatchConditions::from_match_exprs(id, match_exprs),
+            children,
+        })
+    }
+
+    pub fn is_match(&self, ctxt: &mut Context) -> Result<bool> {
+        self.match_conditions.is_match(ctxt)
+    }
+}
+
+impl ValueTree {
+    pub fn from_nested_clauses(ids: &[&str], nested_clauses: NestedClauses) -> Result<Self> {
+        match nested_clauses {
+            NestedClauses::AssignClauses(clauses) => Self::from_assign_clauses(ids, clauses),
+            NestedClauses::MatchClauses(clauses) => Self::from_match_clauses(ids, clauses, None),
+            NestedClauses::MatchClausesWithWildcard(clauses) => Self::from_match_clauses(ids, clauses.0, Some(clauses.1)),
+        }
+    }
+
+    fn from_match_clauses(ids: &[&str], match_clauses: MatchClauses, wildcard: Option<WildcardClause>) -> Result<Self> {
+        let arms = match_clauses.0.into_iter()
+            .map(|clause| MatchArm::new(clause, ids))
+            .collect::<Result<_>>()?;
+
+        let wildcard_arm = wildcard.map(|clause|
+                Self::from_nested_clauses(&ids[1..], *clause.1).map(Box::new))
+            .transpose()?;
+
+        Ok(Self::Match(arms, wildcard_arm))
+    }
+
+    fn from_assign_clauses(ids: &[&str], assign_clauses: AssignClauses) -> Result<Self> {
+        let (arms, gens): (Vec<_>, Vec<MaybeWeighted<GeneratorEnum>>) = assign_clauses.0.into_iter()
+            .map(|AssignClause(_, wvalues, maybe_children)| {
+                let children = maybe_children
+                    .map(|c| Self::from_assign_clauses(&ids[1..], c))
+                    .transpose()?;
+
+                let arm = AssignArm::new(ids[0], &wvalues, children)?;
+                Ok((arm, wvalues.into()))
+            })
+            .collect::<Result<Vec<(AssignArm, MaybeWeighted<GeneratorEnum>)>>>()?
+            .into_iter()
+            .unzip();
+
+        Ok(Self::Assign(arms, GeneratorEnum::from(gens)))
+    }
+
+    fn get_value(&self, ctxt: &mut Context) -> Result<OutValue> {
+        match self {
+            ValueTree::Assign(_, gen) => gen.generate_value(ctxt),
+            ValueTree::Match(_, _) => Err(EvaluationError::ExpectedValueFoundMatcher),
+        }
+    }
+
+    fn find_child_from_context(&self, ctxt: &mut Context) -> Result<&ValueTree> {
+        match self {
+            ValueTree::Match(match_arms, sibling_set) =>
+                match_arms.iter()
+                    .find_ok(|arm| arm.is_match(ctxt))?
+                    .map(|arm| &arm.children)
+                    .or(sibling_set.as_ref().map(|b| b.as_ref()))
+                    .ok_or(EvaluationError::NoMatchForValue),
+
+            ValueTree::Assign(assign_arms, _) =>
+                assign_arms.iter()
+                    .find_ok(|arm| arm.is_match(ctxt))?
+                    .ok_or(EvaluationError::NoMatchForValue)?
+                    .children
+                    .as_ref()
+                    .ok_or(EvaluationError::NoChildrenForTree),
+        }
+    }
+
+    fn generate_value_at_depth(&self, ctxt: &mut Context, read_depth: usize) -> Result<OutValue> {
+        (0..read_depth)
+            .try_fold(self, |tree, _| tree.find_child_from_context(ctxt))?
+            .get_value(ctxt)
+    }
+}
+
+#[derive(Debug)]
+pub struct NestedGenerator { read_depth: usize, tree: Rc<ValueTree> }
+
+impl NestedGenerator {
+    pub fn new(read_depth: usize, tree: Rc<ValueTree>) -> Self {
+        Self { read_depth, tree }
+    }
+}
+
+impl Generator2 for NestedGenerator {
+    fn generate_value(&self, ctxt: &mut Context) -> Result<super::model::OutValue> {
+        self.tree.generate_value_at_depth(ctxt, self.read_depth)
+    }
+}
+
+#[derive(Debug)]
 pub enum GeneratorEnum {
     DateRange(DateRangeGen),
     IntegerRange(IntegerRangeGen),
@@ -208,6 +383,7 @@ pub enum GeneratorEnum {
     Identifier(IdentifierGen),
     Alternation(Box<AlternationGen>),
     Join(JoinGen),
+    Nested(NestedGenerator),
 }
 
 impl Generator2 for GeneratorEnum {
@@ -221,6 +397,7 @@ impl Generator2 for GeneratorEnum {
             Self::Identifier(gen) => gen.generate_value(ctxt),
             Self::Alternation(gen) => gen.generate_value(ctxt),
             Self::Join(gen) => gen.generate_value(ctxt),
+            Self::Nested(gen) => gen.generate_value(ctxt),
         }
     }
 }
@@ -269,6 +446,40 @@ impl From<Value> for GeneratorEnum {
 
 impl From<ValueSet> for GeneratorEnum {
     fn from(values: ValueSet) -> Self {
-        Self::Alternation(Box::new(AlternationGen::new(values.0)))
+        let wvals = values.0.into_iter()
+            .map(|v| MaybeWeighted {
+                weight: v.0.map(|w| w.get()),
+                value: GeneratorEnum::from(v.1)
+            })
+            .collect();
+
+        Self::Alternation(AlternationGen::new(wvals).into())
+    }
+}
+
+impl From<Vec<MaybeWeighted<GeneratorEnum>>> for GeneratorEnum {
+    fn from(value: Vec<MaybeWeighted<GeneratorEnum>>) -> Self {
+        GeneratorEnum::Alternation(AlternationGen::new(value).into())
+    }
+}
+
+impl From<WeightedValues> for MaybeWeighted<GeneratorEnum> {
+    fn from(value: WeightedValues) -> Self {
+        let WeightedValues(weight, values) = value;
+
+        let weight = weight.map(|w| w.get());
+
+        let maybe_weighteds = match values {
+            Values::Value(value) =>
+                vec![ MaybeWeighted { weight: Some(100.0), value: GeneratorEnum::from(value) }, ],
+
+            Values::ValueSet(ValueSet(wvalues)) =>
+                wvalues.into_iter()
+                    .map(|v| MaybeWeighted { weight: v.0.map(|w| w.get()), value: GeneratorEnum::from(v.1) })
+                    .collect(),
+        };
+        let value = GeneratorEnum::Alternation(AlternationGen::new(maybe_weighteds).into());
+
+        Self { weight, value }
     }
 }

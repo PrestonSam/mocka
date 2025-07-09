@@ -16,12 +16,24 @@ pub enum EvaluationError {
 
     #[error("unbound identifier")]
     UnboundIdentifier(String),
+
+    #[error("cannot cast value to match expression")]
+    InvalidMatchExprCast(Value),
+
+    #[error("no match for value")]
+    NoMatchForValue, // TODO should figure out what contextual information I could add to this
+
+    #[error("no children for tree")]
+    NoChildrenForTree, // TODO should figure out what contextual information I could add to this
+
+    #[error("expected child, found matcher")]
+    ExpectedValueFoundMatcher, // TODO should figure out what contextual information I could add to this
 }
 
 pub type Result<T> = std::result::Result<T, EvaluationError>;
 
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Bindings(HashMap<String, Rc<GeneratorEnum>>);
 
 impl Bindings {
@@ -33,7 +45,7 @@ impl Bindings {
         let value = Rc::new(gen);
 
         if !self.0.contains_key(&id) {
-            self.0.insert(id, value.clone()).unwrap();
+            self.0.insert(id, value.clone());
             Ok(value)
         } else {
             Err(EvaluationError::DuplicateIdentifier(id))
@@ -70,14 +82,6 @@ impl Scope {
 pub struct Context(Bindings, Scope);
 
 impl Context {
-    fn new(bindings: Bindings) -> Self {
-        Self(bindings, Default::default())
-    }
-
-    pub fn bindings(&self) -> &Bindings {
-        &self.0
-    }
-
     pub fn get_value(&mut self, id: &str) -> Result<Rc<OutValue>> {
         match self.1.get_value(id) {
             Some(scoped_value) => Ok(scoped_value),
@@ -88,6 +92,18 @@ impl Context {
                 self.1.set_value(id, value)
             },
         }
+    }
+}
+
+impl From<Bindings> for Context {
+    fn from(bindings: Bindings) -> Self {
+        Self(bindings, Default::default())
+    }
+}
+
+impl From<Context> for Bindings {
+    fn from(value: Context) -> Self {
+        value.0
     }
 }
 
@@ -125,20 +141,13 @@ impl Serialize for OutValue {
     }
 }
 
+#[derive(Debug)]
 pub struct MaybeWeighted<T> {
     pub weight: Option<f64>,
     pub value: T
 }
 
-impl From<WeightedValue> for MaybeWeighted<Value> {
-    fn from(value: WeightedValue) -> Self {
-        MaybeWeighted {
-            weight: value.0.map(|w| w.get()),
-            value: value.1,
-        }
-    }
-}
-
+#[derive(Debug)]
 pub struct WeightedT<T> {
     pub weight: f64,
     pub value: T
@@ -151,4 +160,10 @@ impl<T> WeightedT<T> {
             value: maybe_weighted.value,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct CumulWeightedGen {
+    pub cumul_weight: f64,
+    pub value: GeneratorEnum,
 }

@@ -143,6 +143,21 @@ where
 
 
 
+pub trait FindOk where Self: Iterator + Sized {
+    fn find_ok<E, F>(self, mut predicate: F) -> Result<Option<Self::Item>, E>
+    where F: FnMut(&Self::Item) -> Result<bool, E>
+    {
+        for item in self {
+            if predicate(&item)? {
+                return Ok(Some(item))
+            }
+        }
+        Ok(None)
+    }
+}
+
+impl<I> FindOk for I where I: Iterator {}
+
 
 
 

@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
+use std::rc::Rc;
+
 use chrono::NaiveDate;
 use lang_packer::{DbgPacker, Packer};
 
-use crate::mockagen::parser::Rule;
+use crate::mockagen::{evaluator::model::{EvaluationError, MaybeWeighted}, parser::Rule, OutValue};
 
 #[derive(Debug, Packer)]
 #[packer(rule = Rule::body)] // TODO nested special cases :(
@@ -127,21 +129,21 @@ pub struct ValueSet(pub Vec<WeightedValue>);
 #[packer(rule = Rule::weighted_value)]
 pub struct WeightedValue(pub Option<Weight>, pub Value);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::value)]
 pub enum Value {
     HigherOrder(HigherOrderValue),
     Primitive(PrimitiveValue),
 }
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::higher_order_value)]
 pub enum HigherOrderValue {
     JoinValue(JoinValue),
     IdentifierValue(IdentifierValue),
 }
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::primitive_value)]
 pub enum PrimitiveValue {
     TimestampDate(TimestampDateValue),
@@ -151,27 +153,27 @@ pub enum PrimitiveValue {
     Real(RealValue),
 }
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::timestamp_date_value)]
 pub struct TimestampDateValue(pub DateLiteral, pub DateLiteral);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::literal_value)]
 pub struct LiteralValue(pub StringLiteral);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::integer_value)]
 pub struct IntegerValue(pub IntegerLiteral, pub Option<IntegerLiteral>);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::string_value)]
 pub struct StringValue(pub IntegerLiteral, pub IntegerLiteral);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::real_value)]
 pub struct RealValue(pub RealLiteral, pub RealLiteral);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::join_value)]
 pub struct JoinValue(pub Vec<Value>);
 
@@ -179,7 +181,7 @@ pub struct JoinValue(pub Vec<Value>);
 #[packer(rule = Rule::any_value)]
 pub struct AnyValue;
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::identifier_value)]
 pub struct IdentifierValue(pub Identifier);
 
@@ -207,27 +209,27 @@ pub enum Weighting {
 #[packer(rule = Rule::WEIGHT)]
 pub struct Weight(pub Weighting);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::DATE_LITERAL)]
 pub struct DateLiteral(pub NaiveDate);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::REAL_LITERAL)]
 pub struct RealLiteral(pub f64);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::INTEGER_LITERAL)]
 pub struct IntegerLiteral(pub i64);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::IDENTIFIER)]
 pub struct Identifier(pub String);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::STRING_LITERAL)]
 pub struct StringLiteral(pub StringContent);
 
-#[derive(Debug, Packer)]
+#[derive(Debug, Clone, Packer)]
 #[packer(rule = Rule::string_content)]
 pub struct StringContent(pub String);
 
@@ -247,6 +249,35 @@ impl Weight {
                     .unwrap_or(0.0) + suffix / 100.0,
         };
 
-        percentage / 100.0
+        percentage
+    }
+}
+
+impl MatchExpr {
+    pub fn is_match(&self, value: &OutValue) -> bool {
+        match (self, value) {
+            (Self::LiteralValue(LiteralValue(StringLiteral(StringContent(expected)))), OutValue::String(found)) => *expected == *found,
+            _ => false,
+        }
+    }
+}
+
+impl Values {
+    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Value> + 'a> {
+        match self {
+            Values::Value(value) => Box::new(std::iter::once(value)),
+            Values::ValueSet(value_set) => Box::new(value_set.0.iter().map(|v| &v.1)),
+        }
+    }
+}
+
+impl TryFrom<&Value> for MatchExpr {
+    type Error = EvaluationError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Primitive(PrimitiveValue::Literal(literal)) => Ok(MatchExpr::LiteralValue(literal.to_owned())),
+            _ => Err(EvaluationError::InvalidMatchExprCast(value.to_owned())),
+        }
     }
 }

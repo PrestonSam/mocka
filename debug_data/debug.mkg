@@ -3,8 +3,17 @@ DEF unix-timestamp = timestamp/date 2023-05-08 2023-07-07
 
 DEF age = integer 18 90
 
+DEF x = "0"
+
+USING x DEF a, b, c, d
+    ? "0"
+        = "1"
+            = "2"
+                = "3"
+                    = "4"
+
 DEF country, currency-code 
-    = 2% "United Kingdom"
+    = 52% "United Kingdom"
         = "GBP"
     = 3% "China"
         = "CNY"

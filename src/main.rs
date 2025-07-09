@@ -1,7 +1,6 @@
-use mockadoc::MockadocError;
-use mockagen::{run_mockagen};
+use mockagen::run_mockagen;
 
-use crate::mockadoc::run_mockadoc;
+use crate::{mockadoc::run_mockadoc, mockagen::{Context, Generator2}};
 
 mod mockagen;
 mod mockadoc;
@@ -12,9 +11,15 @@ fn mockagen() -> Result<(), crate::error::Error> {
     let file = std::fs::read_to_string("debug_data/debug.mkg").unwrap();
     let output = run_mockagen(&file);
 
-    dbg!(&output);
-
-    output.map_err(crate::error::Error::MockagenError)
+    match output {
+        Ok(bindings) => {
+            let mut context: Context = bindings.into();
+            println!("{:?}", context.get_value("region"));
+            println!("{:?}", context.get_value("full-name"));
+        },
+        Err(err) => println!("{}",err),
+    };
+    todo!()
 }
 
 
@@ -35,7 +40,9 @@ fn mockadoc() -> Result<(), crate::error::Error> {
 
 
 fn main() -> Result<(), crate::error::Error> {
-    // mockagen();
+    let _ = mockagen()
+        .inspect_err(|e| println!("{e}"));
+    Ok(())
 
-    mockadoc()
+    // mockadoc()
 }

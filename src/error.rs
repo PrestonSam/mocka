@@ -1,5 +1,10 @@
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Error, Debug)]
 pub enum Error {
-    MockagenError(crate::mockagen::MockagenError),
-    MockadocError(crate::mockadoc::MockadocError),
+    #[error("{0}")]
+    MockagenError(#[from] crate::mockagen::MockagenError),
+
+    #[error("{0}")]
+    MockadocError(#[from] crate::mockadoc::MockadocError),
 }

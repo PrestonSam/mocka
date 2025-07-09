@@ -1,4 +1,4 @@
-use crate::mockagen::parser::parse_mockagen2;
+use crate::mockagen::{evaluator::model::Bindings, parser::parse_mockagen};
 
 use self::{evaluator::evaluate_mockagen, packer::pack_mockagen};
 
@@ -10,13 +10,11 @@ mod evaluator;
 
 pub use model::MockagenError;
 pub use evaluator::model::OutValue;
+pub use evaluator::Generator2;
+pub use evaluator::model::Context;
 
-pub fn run_mockagen(code: &str) -> Result<(), MockagenError> {
-    let pairs = parse_mockagen2(code)?;
-    let body = pack_mockagen(pairs)?;
-
-    let evaluation = evaluate_mockagen(body);
-
-    // Ok(GeneratorSet::new(evaluation))
-    todo!("switched this off to get a compilation while transitioning to new parser and packer")
+pub fn run_mockagen(code: &str) -> Result<Bindings, MockagenError> {
+    parse_mockagen(code)
+        .and_then(pack_mockagen)
+        .and_then(evaluate_mockagen)
 }

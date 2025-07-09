@@ -21,20 +21,20 @@ pub enum EvaluationError {
     LegacyDocumentShapeError(LegacyTransposeError)
 }
 
-pub struct OutRow(pub Vec<OutValue>);
+// pub struct OutRow(pub Vec<OutValue>);
 
-pub struct OutDocument<'a>(pub Vec<ColumnGenerator<'a>>);
+// pub struct OutDocument(pub Vec<()>);
 
-impl OutDocument<'_> {
-    pub fn generate(&self) -> Result<Vec<OutRow>, EvaluationError> {
-        let output = self.0.iter()
-            .map(|col_gen| col_gen.generate_column())
-            .collect::<Result<Vec<_>, _>>().map_err(EvaluationError::from)?
-            .into_iter()
-            .transpose().map_err(EvaluationError::TableShapeError)?
-            .map(OutRow)
-            .collect();
+// impl OutDocument<'_> {
+//     pub fn generate(&self) -> Result<Vec<OutRow>, EvaluationError> {
+//         let output = self.0.iter()
+//             .map(|col_gen| col_gen.generate_column())
+//             .collect::<Result<Vec<_>, _>>().map_err(EvaluationError::from)?
+//             .into_iter()
+//             .transpose().map_err(EvaluationError::TableShapeError)?
+//             .map(OutRow)
+//             .collect();
 
-        Ok(output)
-    }
-}
+//         Ok(output)
+//     }
+// }

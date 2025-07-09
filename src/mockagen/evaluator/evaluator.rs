@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use itertools::Itertools;
 
-use crate::mockagen::{evaluator::model::{Bindings, Result}, packer::packer::{AssignIds, Definition, Identifier, MultiValDef, Names, NestedClauses, NestedDefinition, SingleDefinition, SingleValDef}};
+use crate::mockagen::{evaluator::{generators::{GeneratorEnum, NestedGenerator, ValueTree}, model::{Bindings, Result}}, packer::packer::{AssignIds, Definition, Identifier, MultiValDef, Names, NestedDefinition, SingleDefinition, SingleValDef}};
 
 pub trait Evaluate {
     // Worth exchanging the returned vec for an iterator and then just call flatten a lot.
@@ -35,32 +37,23 @@ impl Evaluate for SingleDefinition {
 }
 
 impl Evaluate for NestedDefinition {
-    fn evaluate(self, bindings: Bindings) -> Result<Bindings> {
+    fn evaluate(self, mut bindings: Bindings) -> Result<Bindings> {
         let Self(maybe_using_ids, AssignIds(Names(assign_ids)), nested_clauses) = self;
-        // This can be broken into one assign statement (which would look similar to multi.evaluate) followed by lots of using context define x statements
-        // So let's pair everything up first
+        let ids = maybe_using_ids.iter()
+            .flat_map(|u| u.0.0.iter())
+            .chain(assign_ids.iter())
+            .map(|i| i.0.as_str())
+            .collect_vec();
 
-        // Using A, B, C Define D E F
-        // Becomes
+        let value_tree = Rc::new(ValueTree::from_nested_clauses(ids.as_slice(), nested_clauses)?);
+        let using_id_offset = maybe_using_ids.map(|u| u.0.0.len()).unwrap_or(0);
+        let depths = using_id_offset..assign_ids.len() + using_id_offset;
 
-        // Using A, B, C, Define D
-        // Using A, B, C, D Define E
-        // Using A, B, C, D, E Define F
+        for (Identifier(id), depth) in assign_ids.into_iter().zip(depths) {
+            bindings.add(id, GeneratorEnum::Nested(NestedGenerator::new(depth, value_tree.clone())))?;
+        }
 
-        // So I'm seeing lots of slices right?
-        // We're ALWAYS including the using ids, so that's easy. I don't need to consider those too hard
-        // I should be iterating along the assign ids and taking x values, then consuming the next value after that
-        // Leading up to the final value.
-        // Considering that I'm incrementing each time, I wonder if it's possible to ignore indexes
-        // I think instead it's probably worth just using a range based on the length of the vector.
-        // (..assign_ids.len()).map(|len| maybe_using_ids.iter().flatten().chain(assign_ids.take(len)))
-
-        // Every item in this iterator produces an iterator containing a definition and all of its dependencies
-        let statements = (0..assign_ids.len())
-            .map(|len| maybe_using_ids.iter().flat_map(|i| i.0.0.iter()).chain(assign_ids.iter().take(len)));
-
-        maybe_using_ids.unwrap();
-        todo!()
+        Ok(bindings)
     }
 }
 

@@ -9,9 +9,9 @@ use crate::mockagen::MockagenError;
 #[grammar = "mockagen/parser/parser.pest"]
 pub struct MockagenParser;
 
-pub fn parse_mockagen2(code: &str) -> Result<Pairs<'_, Rule>, MockagenError> {
-    Ok(MockagenParser::parse(Rule::body, code).unwrap()) // TODO switch error handling back on again
-        // .map_err(MockagenError::from_parsing_err)
+pub fn parse_mockagen(code: &str) -> Result<Pairs<'_, Rule>, MockagenError> {
+    MockagenParser::parse(Rule::body, code)
+        .map_err(Into::into)
 }
 
 impl DropRules for Rule {
