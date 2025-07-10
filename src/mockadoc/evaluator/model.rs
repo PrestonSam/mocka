@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{
     mockagen::{MockagenError, OutValue},
-    utils::iterator::{LegacyTransposeError, Transpose, TransposeError}
+    utils::iterator::TransposeError
 };
 
 
@@ -16,9 +16,6 @@ pub enum EvaluationError {
 
     #[error("malformed table")]
     TableShapeError(#[from] TransposeError),
-
-    #[error("legacy")]
-    LegacyDocumentShapeError(LegacyTransposeError)
 }
 
 // pub struct OutRow(pub Vec<OutValue>);

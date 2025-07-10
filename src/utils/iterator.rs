@@ -3,52 +3,6 @@ use std::{collections::HashMap, marker::PhantomData, ops::ControlFlow};
 use itertools::Itertools;
 use thiserror::Error;
 
-#[derive(Debug)]
-pub enum LegacyTransposeError {
-    InconsistentVecLengths { expected_length: usize, found_length: usize },
-}
-
-#[derive(Debug)]
-pub struct LegacyTransposed<T> {
-    src: Vec<std::vec::IntoIter<T>>,
-}
-
-impl<T> Iterator for LegacyTransposed<T> {
-    type Item = Vec<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.src.iter_mut()
-            .map(|vec| vec.next())
-            .collect::<Option<Vec<_>>>()
-    }
-}
-
-pub trait LegacyTranspose: Iterator {
-    fn transpose<T>(mut self) -> Result<LegacyTransposed<T>, LegacyTransposeError>
-    where
-        Self: Iterator<Item = Vec<T>> + Sized,
-    {
-        let mut compare_length = Option::None::<usize>;
-
-        self.try_fold(vec![], |mut src, vec| {
-            let vec_len = vec.len();
-            let cmp_len = compare_length.get_or_insert(vec_len);
-
-            if *cmp_len == vec_len {
-                src.push(vec.into_iter());
-
-                Ok(src)
-            } else {
-                Err(LegacyTransposeError::InconsistentVecLengths { expected_length: *cmp_len, found_length: vec_len })
-            }
-        }).map(|src| LegacyTransposed { src })
-    }
-}
-
-impl<T> LegacyTranspose for T where T: Iterator + ?Sized { }
-
-
-
 
 #[derive(Error, Debug)]
 pub enum TransposeError {
