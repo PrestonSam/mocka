@@ -8,6 +8,7 @@ pub use generators::Generator2;
 pub fn evaluate_mockagen(body: Body) -> Result<Bindings, MockagenError> {
     let Body(maybe_includes, definitions, _) = body;
 
+    // maybe_includes.map(|m| m.0.iter().map(|m| m.))
     // TODO handle includes
 
     definitions.into_iter()

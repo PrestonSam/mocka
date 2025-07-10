@@ -93,7 +93,7 @@ DEF full-name = join surname "," first-name
 ### Mockagen
 - [x] Parser (inc. tokeniser)
 - [x] AST builder
-- [ ] Evaluation (currently being re-written)
+- [x] Evaluation (currently being re-written)
 
 ### Mockadoc
 - [x] Parser (inc. tokeniser)
@@ -103,3 +103,4 @@ DEF full-name = join surname "," first-name
 ## Building
 
 This project depends upon the `lang_packer` library.
+

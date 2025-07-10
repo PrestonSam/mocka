@@ -1,4 +1,4 @@
-use std::{ptr::read, rc::Rc};
+use std::rc::Rc;
 
 use chrono::{Duration, NaiveDate};
 use itertools::Itertools;
@@ -14,7 +14,7 @@ use crate::{mockagen::{
     }
 }, utils::iterator::FindOk};
 
-use super::model::{MaybeWeighted, OutValue, WeightedT};
+use super::model::{MaybeWeightedGen, OutValue, WeightedGen};
 
 pub trait Generator2 {
     fn generate_value(&self, ctxt: &mut Context) -> Result<OutValue>;
@@ -159,17 +159,17 @@ pub struct AlternationGen {
 }
 
 impl AlternationGen {
-    fn new(maybe_weighteds: Vec<MaybeWeighted<GeneratorEnum>>) -> Self {
+    fn new(maybe_weighteds: Vec<MaybeWeightedGen>) -> Self {
         let implicit_weighting = Self::get_implicit_weighting(maybe_weighteds.as_slice());
         let mut explicit_weighted = maybe_weighteds.into_iter()
-            .map(|w| WeightedT::new(w, implicit_weighting))
+            .map(|w| w.as_weighted_gen(implicit_weighting))
             .rev();
 
-        let WeightedT { value: last_value, .. } = explicit_weighted.next()
+        let WeightedGen { value: last_value, .. } = explicit_weighted.next()
             .expect("Should have at least one value"); // TODO real error handling
 
         let others = explicit_weighted
-            .scan(0.0, |cumul_weight, WeightedT { weight, value }| {
+            .scan(0.0, |cumul_weight, WeightedGen { weight, value }| {
                 *cumul_weight += weight;
 
                 Some(CumulWeightedGen { cumul_weight: *cumul_weight, value })
@@ -182,7 +182,7 @@ impl AlternationGen {
         }
     }
 
-    fn get_implicit_weighting<T>(maybe_weighteds: &[MaybeWeighted<T>]) -> f64 {
+    fn get_implicit_weighting(maybe_weighteds: &[MaybeWeightedGen]) -> f64 {
         let mut total_explicit_percentage = 0.0;
         let mut implicit_percentage_count = 0.0;
 
@@ -309,7 +309,7 @@ impl ValueTree {
     }
 
     fn from_assign_clauses(ids: &[&str], assign_clauses: AssignClauses) -> Result<Self> {
-        let (arms, gens): (Vec<_>, Vec<MaybeWeighted<GeneratorEnum>>) = assign_clauses.0.into_iter()
+        let (arms, gens): (Vec<_>, Vec<MaybeWeightedGen>) = assign_clauses.0.into_iter()
             .map(|AssignClause(_, wvalues, maybe_children)| {
                 let children = maybe_children
                     .map(|c| Self::from_assign_clauses(&ids[1..], c))
@@ -318,7 +318,7 @@ impl ValueTree {
                 let arm = AssignArm::new(ids[0], &wvalues, children)?;
                 Ok((arm, wvalues.into()))
             })
-            .collect::<Result<Vec<(AssignArm, MaybeWeighted<GeneratorEnum>)>>>()?
+            .collect::<Result<Vec<(AssignArm, MaybeWeightedGen)>>>()?
             .into_iter()
             .unzip();
 
@@ -447,7 +447,7 @@ impl From<Value> for GeneratorEnum {
 impl From<ValueSet> for GeneratorEnum {
     fn from(values: ValueSet) -> Self {
         let wvals = values.0.into_iter()
-            .map(|v| MaybeWeighted {
+            .map(|v| MaybeWeightedGen {
                 weight: v.0.map(|w| w.get()),
                 value: GeneratorEnum::from(v.1)
             })
@@ -457,13 +457,13 @@ impl From<ValueSet> for GeneratorEnum {
     }
 }
 
-impl From<Vec<MaybeWeighted<GeneratorEnum>>> for GeneratorEnum {
-    fn from(value: Vec<MaybeWeighted<GeneratorEnum>>) -> Self {
+impl From<Vec<MaybeWeightedGen>> for GeneratorEnum {
+    fn from(value: Vec<MaybeWeightedGen>) -> Self {
         GeneratorEnum::Alternation(AlternationGen::new(value).into())
     }
 }
 
-impl From<WeightedValues> for MaybeWeighted<GeneratorEnum> {
+impl From<WeightedValues> for MaybeWeightedGen {
     fn from(value: WeightedValues) -> Self {
         let WeightedValues(weight, values) = value;
 
@@ -471,11 +471,11 @@ impl From<WeightedValues> for MaybeWeighted<GeneratorEnum> {
 
         let maybe_weighteds = match values {
             Values::Value(value) =>
-                vec![ MaybeWeighted { weight: Some(100.0), value: GeneratorEnum::from(value) }, ],
+                vec![ MaybeWeightedGen { weight: Some(100.0), value: GeneratorEnum::from(value) }, ],
 
             Values::ValueSet(ValueSet(wvalues)) =>
                 wvalues.into_iter()
-                    .map(|v| MaybeWeighted { weight: v.0.map(|w| w.get()), value: GeneratorEnum::from(v.1) })
+                    .map(|v| MaybeWeightedGen { weight: v.0.map(|w| w.get()), value: GeneratorEnum::from(v.1) })
                     .collect(),
         };
         let value = GeneratorEnum::Alternation(AlternationGen::new(maybe_weighteds).into());

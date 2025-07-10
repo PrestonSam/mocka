@@ -5,9 +5,6 @@ use itertools::Itertools;
 use crate::mockagen::{evaluator::{generators::{GeneratorEnum, NestedGenerator, ValueTree}, model::{Bindings, Result}}, packer::packer::{AssignIds, Definition, Identifier, MultiValDef, Names, NestedDefinition, SingleDefinition, SingleValDef}};
 
 pub trait Evaluate {
-    // Worth exchanging the returned vec for an iterator and then just call flatten a lot.
-    // Actually, I think I might just modify &mut Bindings and return nothing
-    // Perhaps I'll just return a result to capture any errors?
     fn evaluate(self, bindings: Bindings) -> Result<Bindings>;
 }
 

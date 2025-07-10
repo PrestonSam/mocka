@@ -7,7 +7,7 @@ use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 use crate::mockagen::evaluator::generators::{Generator2, GeneratorEnum};
-use crate::mockagen::packer::packer::{Value, WeightedValue};
+use crate::mockagen::packer::packer::Value;
 
 #[derive(Error, Debug)]
 pub enum EvaluationError {
@@ -54,7 +54,7 @@ impl Bindings {
 
     pub fn get(&self, id: &str) -> Result<Rc<GeneratorEnum>> {
         self.0.get(id)
-            .map(Rc::to_owned)
+            .map(Rc::clone)
             .ok_or_else(|| EvaluationError::UnboundIdentifier(id.to_owned()))
     }
 }
@@ -64,7 +64,7 @@ pub struct Scope(HashMap<String, Rc<OutValue>>);
 
 impl Scope {
     fn get_value(&self, id: &str) -> Option<Rc<OutValue>> {
-        self.0.get(id).map(Rc::to_owned)
+        self.0.get(id).map(Rc::clone)
     }
 
     fn set_value(&mut self, id: &str, value: OutValue) -> Result<Rc<OutValue>> {
@@ -142,24 +142,24 @@ impl Serialize for OutValue {
 }
 
 #[derive(Debug)]
-pub struct MaybeWeighted<T> {
+pub struct MaybeWeightedGen {
     pub weight: Option<f64>,
-    pub value: T
+    pub value: GeneratorEnum,
+}
+
+impl MaybeWeightedGen {
+    pub fn as_weighted_gen(self, implicit_weight: f64) -> WeightedGen {
+        WeightedGen {
+            weight: self.weight.unwrap_or(implicit_weight),
+            value: self.value,
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct WeightedT<T> {
+pub struct WeightedGen {
     pub weight: f64,
-    pub value: T
-}
-
-impl<T> WeightedT<T> {
-    pub fn new(maybe_weighted: MaybeWeighted<T>, implicit_weight: f64) -> Self {
-        WeightedT {
-            weight: maybe_weighted.weight.unwrap_or(implicit_weight),
-            value: maybe_weighted.value,
-        }
-    }
+    pub value: GeneratorEnum,
 }
 
 #[derive(Debug)]

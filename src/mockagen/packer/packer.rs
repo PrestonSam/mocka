@@ -1,11 +1,9 @@
 #![allow(dead_code)]
 
-use std::rc::Rc;
-
 use chrono::NaiveDate;
-use lang_packer::{DbgPacker, Packer};
+use lang_packer::Packer;
 
-use crate::mockagen::{evaluator::model::{EvaluationError, MaybeWeighted}, parser::Rule, OutValue};
+use crate::mockagen::{evaluator::model::EvaluationError, parser::Rule, OutValue};
 
 #[derive(Debug, Packer)]
 #[packer(rule = Rule::body)] // TODO nested special cases :(
